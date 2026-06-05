@@ -14497,15 +14497,27 @@ DefaultSettings = (function()
 		Mobile = {
 			_Recurse = true,
 			Mode = "Auto", -- Auto, On, Off
-			UIScale = 1,
-			MinTapSize = 36,
-			DefaultPanelHeight = 0.72,
-			CompactPanelHeight = 0.64,
+			LayoutVersion = 2,
+			UIScale = 0.86,
+			MinTapSize = 32,
+			DefaultPanelHeight = 0.58,
+			CompactPanelHeight = 0.42,
+			PanelWidthLandscape = 0.56,
+			PanelWidthPortrait = 0.92,
+			PanelHeightLandscape = 0.58,
+			PanelHeightPortrait = 0.60,
+			MaxPanelWidth = 760,
+			MaxPanelHeight = 420,
+			MenuMaxWidth = 240,
+			MenuMaxHeight = 260,
+			PaletteMaxWidth = 260,
+			PaletteMaxHeight = 320,
+			PaletteHeight = 0.48,
 			FloatingLauncher = true,
-			LauncherSize = 46,
+			LauncherSize = 34,
 			LauncherPosition = { X = 0.88, Y = 0.72 },
 			SinglePanel = true,
-			BottomNavigation = true,
+			BottomNavigation = false,
 			ActionPalette = true
 		},
 		Performance = {
@@ -14627,24 +14639,35 @@ Main = (function()
 	
 	Main.GetMobileMetrics = function()
 		local mobileSettings = Settings.Mobile or {}
-		local scale = math.clamp(tonumber(mobileSettings.UIScale) or 1, 0.75, 1.5)
-		local tap = math.floor(math.clamp(tonumber(mobileSettings.MinTapSize) or 36, 30, 56) * scale)
-		local navHeight = math.floor(math.max(44, tap + 12))
-		local launcherSize = math.floor(math.clamp(tonumber(mobileSettings.LauncherSize) or 46, 38, 58) * scale)
+		local scale = math.clamp(tonumber(mobileSettings.UIScale) or 0.86, 0.7, 1.35)
+		local tap = math.floor(math.clamp(tonumber(mobileSettings.MinTapSize) or 32, 28, 48))
+		local navHeight = mobileSettings.BottomNavigation == false and 0 or math.floor(math.max(38, tap + 10))
+		local launcherSize = math.floor(math.clamp(tonumber(mobileSettings.LauncherSize) or 34, 30, 48))
 		local launcherPosition = mobileSettings.LauncherPosition or {}
 		return {
 			Scale = scale,
 			MinTapSize = tap,
-			TitleBarHeight = math.max(tap, math.floor(36 * scale)),
+			TitleBarHeight = math.max(tap, math.floor(32 * scale)),
 			BottomNavHeight = navHeight,
-			Padding = math.floor(8 * scale),
-			ResizeHandle = math.floor(12 * scale),
-			DefaultPanelHeight = math.clamp(tonumber(mobileSettings.DefaultPanelHeight) or 0.72, 0.5, 0.9),
-			CompactPanelHeight = math.clamp(tonumber(mobileSettings.CompactPanelHeight) or 0.64, 0.45, 0.75),
+			Padding = math.max(5, math.floor(7 * scale)),
+			ResizeHandle = math.floor(10 * scale),
+			DefaultPanelHeight = math.clamp(tonumber(mobileSettings.DefaultPanelHeight) or 0.58, 0.42, 0.78),
+			CompactPanelHeight = math.clamp(tonumber(mobileSettings.CompactPanelHeight) or 0.42, 0.28, 0.62),
+			PanelWidthLandscape = math.clamp(tonumber(mobileSettings.PanelWidthLandscape) or 0.56, 0.42, 0.78),
+			PanelWidthPortrait = math.clamp(tonumber(mobileSettings.PanelWidthPortrait) or 0.92, 0.72, 0.98),
+			PanelHeightLandscape = math.clamp(tonumber(mobileSettings.PanelHeightLandscape) or 0.58, 0.36, 0.76),
+			PanelHeightPortrait = math.clamp(tonumber(mobileSettings.PanelHeightPortrait) or 0.60, 0.42, 0.78),
+			MaxPanelWidth = math.floor(math.clamp(tonumber(mobileSettings.MaxPanelWidth) or 760, 260, 900)),
+			MaxPanelHeight = math.floor(math.clamp(tonumber(mobileSettings.MaxPanelHeight) or 420, 180, 560)),
+			MenuMaxWidth = math.floor(math.clamp(tonumber(mobileSettings.MenuMaxWidth) or 240, 180, 320)),
+			MenuMaxHeight = math.floor(math.clamp(tonumber(mobileSettings.MenuMaxHeight) or 260, 140, 360)),
+			PaletteMaxWidth = math.floor(math.clamp(tonumber(mobileSettings.PaletteMaxWidth) or 260, 200, 360)),
+			PaletteMaxHeight = math.floor(math.clamp(tonumber(mobileSettings.PaletteMaxHeight) or 320, 180, 440)),
+			PaletteHeight = math.clamp(tonumber(mobileSettings.PaletteHeight) or 0.48, 0.32, 0.62),
 			LauncherSize = launcherSize,
 			LauncherX = math.clamp(tonumber(launcherPosition.X) or 0.88, 0, 1),
 			LauncherY = math.clamp(tonumber(launcherPosition.Y) or 0.72, 0, 1),
-			LauncherDragThreshold = math.max(6, math.floor(8 * scale))
+			LauncherDragThreshold = math.max(5, math.floor(7 * scale))
 		}
 	end
 	
@@ -14655,9 +14678,15 @@ Main = (function()
 		local margin = metrics.Padding
 		local usableWidth = math.max(220, viewport.X - margin * 2)
 		local usableHeight = math.max(160, viewport.Y - margin * 2)
-		local targetHeight = math.floor(usableHeight * metrics.DefaultPanelHeight)
-		window.SizeX = math.min(math.max(window.MinX or 220, usableWidth), usableWidth)
-		window.SizeY = math.min(math.max(window.MinY or 160, targetHeight), usableHeight)
+		local isLandscape = viewport.X > viewport.Y
+		local panelWidthScale = isLandscape and metrics.PanelWidthLandscape or metrics.PanelWidthPortrait
+		local panelHeightScale = isLandscape and metrics.PanelHeightLandscape or metrics.PanelHeightPortrait
+		local targetWidth = math.floor(math.min(usableWidth, viewport.X * panelWidthScale, metrics.MaxPanelWidth))
+		local targetHeight = math.floor(math.min(usableHeight * metrics.DefaultPanelHeight, viewport.Y * panelHeightScale, metrics.MaxPanelHeight))
+		targetWidth = math.max(220, targetWidth)
+		targetHeight = math.max(160, targetHeight)
+		window.SizeX = math.min(targetWidth, usableWidth)
+		window.SizeY = math.min(targetHeight, usableHeight)
 		local posX = margin
 		local posY = margin
 		window.GuiElems.Main.Position = UDim2.new(0, posX, 0, posY)
@@ -15266,6 +15295,32 @@ Main = (function()
 		return res
 	end
 
+	Main.ApplyMobileLayoutMigration = function()
+		Settings.Mobile = Settings.Mobile or {}
+		local mobileSettings = Settings.Mobile
+		if mobileSettings.LayoutVersion ~= 2 then
+			mobileSettings.UIScale = 0.86
+			mobileSettings.MinTapSize = 32
+			mobileSettings.DefaultPanelHeight = 0.58
+			mobileSettings.CompactPanelHeight = 0.42
+			mobileSettings.PanelWidthLandscape = 0.56
+			mobileSettings.PanelWidthPortrait = 0.92
+			mobileSettings.PanelHeightLandscape = 0.58
+			mobileSettings.PanelHeightPortrait = 0.60
+			mobileSettings.MaxPanelWidth = 760
+			mobileSettings.MaxPanelHeight = 420
+			mobileSettings.MenuMaxWidth = 240
+			mobileSettings.MenuMaxHeight = 260
+			mobileSettings.PaletteMaxWidth = 260
+			mobileSettings.PaletteMaxHeight = 320
+			mobileSettings.PaletteHeight = 0.48
+			mobileSettings.LauncherSize = 34
+			mobileSettings.BottomNavigation = false
+			mobileSettings.FloatingLauncher = true
+			mobileSettings.LayoutVersion = 2
+		end
+	end
+
 	Main.LoadSettings = function()
 		local s, data = pcall(env.readfile or error, "DexPlusPlusSettings.json")
 		if s and data and data ~= "" then
@@ -15289,10 +15344,12 @@ Main = (function()
 				for k, v in pairs(deserializedData) do
 					Settings[k] = v
 				end
+				Main.ApplyMobileLayoutMigration()
 				Main.ApplyMissingDefaultSettings(Settings, DefaultSettings)
 			else
 				warn("failed to decode settings json")
 				Main.ApplyMissingDefaultSettings(Settings, DefaultSettings)
+				Main.ApplyMobileLayoutMigration()
 			end
 		else
 			Main.ResetSettings()
@@ -15317,6 +15374,7 @@ Main = (function()
 			return res
 		end
 		recur(DefaultSettings,Settings)
+		Main.ApplyMobileLayoutMigration()
 	end
 
 	Main.FetchAPI = function(callbackiflong, callbackiftoolong, XD)
@@ -15857,9 +15915,10 @@ Main = (function()
 		if Main.IsMobile() then
 			local metrics = Main.GetMobileMetrics()
 			local viewport = Main.GetViewportSize()
-			local menuWidth = math.floor(math.min(300, viewport.X * 0.86))
-			local menuHeight = math.floor(math.min(viewport.Y * metrics.CompactPanelHeight, viewport.Y - metrics.Padding * 2))
-			return UDim2.new(0, menuWidth, 0, math.max(140, menuHeight))
+			local compactWidthScale = viewport.X > viewport.Y and 0.62 or 0.78
+			local menuWidth = math.floor(math.min(viewport.X * compactWidthScale, metrics.MenuMaxWidth))
+			local menuHeight = math.floor(math.min(viewport.Y * metrics.CompactPanelHeight, metrics.MenuMaxHeight))
+			return UDim2.new(0, math.max(180, menuWidth), 0, math.max(132, menuHeight))
 		end
 		return UDim2.new(0,224,0,200)
 	end
@@ -15937,11 +15996,14 @@ Main = (function()
 	Main.SetMainGuiOpen = function(val)
 		Main.MainGuiOpen = val
 
-		Main.MainGui.OpenButton.Text = Main.IsMobile() and (val and "X" or "D++") or (val and "Close" or "Dex++")
+		Main.MainGui.OpenButton.Text = Main.IsMobile() and (val and "X" or "D") or (val and "Close" or "Dex++")
 		if val then Main.MainGui.OpenButton.MainFrame.Visible = true end
 		local menuSize = Main.GetMobileMenuSize()
 		if Main.IsMobile() then Main.PositionMobileMainFrame(menuSize) end
 		Main.MainGui.OpenButton.MainFrame:TweenSize(val and Main.GetMobileMenuSize() or UDim2.new(0,0,0,0),Enum.EasingDirection.Out,Enum.EasingStyle.Quad,0.2,true)
+		if Main.IsMobile() and not val then
+			Main.MainGui.OpenButton.MainFrame.Size = UDim2.new(0,0,0,0)
+		end
 		--Main.MainGui.OpenButton.BackgroundTransparency = val and 0 or (Lib.CheckMouseInGui(Main.MainGui.OpenButton) and 0 or 0.2)
 		service.TweenService:Create(Main.MainGui.OpenButton,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency = val and 0 or (Lib.CheckMouseInGui(Main.MainGui.OpenButton) and 0 or 0.2)}):Play()
 
@@ -16028,8 +16090,8 @@ Main = (function()
 		local openButton = gui.OpenButton
 		openButton.AnchorPoint = Vector2.new(0,0)
 		openButton.Size = UDim2.new(0,metrics.LauncherSize,0,metrics.LauncherSize)
-		openButton.Text = "D++"
-		openButton.TextSize = 14
+		openButton.Text = "D"
+		openButton.TextSize = 12
 		openButton.TextTransparency = 0
 		openButton.UICorner.CornerRadius = UDim.new(1,0)
 		Main.ClampMobileLauncher(openButton)
@@ -16049,19 +16111,19 @@ Main = (function()
 		Main.AppsFrame.Position = UDim2.new(0.5,0,0,0)
 		Main.AppsContainer.Position = UDim2.new(0,6,0,6)
 		Main.AppsContainer.Size = UDim2.new(1,-12,0,2)
-		Main.AppsContainerGrid.CellSize = UDim2.new(0,math.max(66, metrics.MinTapSize + 28),0,metrics.MinTapSize + 22)
+		Main.AppsContainerGrid.CellSize = UDim2.new(0,math.max(54, metrics.MinTapSize + 16),0,metrics.MinTapSize + 14)
 		for _, control in ipairs(Main.AppSequence) do
 			if control.Button then
-				control.Button.Size = UDim2.new(1,0,0,metrics.MinTapSize + 18)
-				control.Button.Icon.Size = UDim2.new(0,26,0,26)
-				control.Button.Icon.Position = UDim2.new(0.5,-13,0,4)
-				control.Button.AppName.Position = UDim2.new(0,2,0,32)
-				control.Button.AppName.Size = UDim2.new(1,-4,1,-34)
-				control.Button.AppName.TextSize = 12
+				control.Button.Size = UDim2.new(1,0,0,metrics.MinTapSize + 10)
+				control.Button.Icon.Size = UDim2.new(0,22,0,22)
+				control.Button.Icon.Position = UDim2.new(0.5,-11,0,3)
+				control.Button.AppName.Position = UDim2.new(0,2,0,27)
+				control.Button.AppName.Size = UDim2.new(1,-4,1,-29)
+				control.Button.AppName.TextSize = 11
 			end
 		end
-		local paletteWidth = math.floor(math.min(330, viewport.X - metrics.Padding * 2))
-		local paletteHeight = math.floor(math.min(viewport.Y * 0.62, viewport.Y - metrics.Padding * 2))
+		local paletteWidth = math.floor(math.min(metrics.PaletteMaxWidth, viewport.X - metrics.Padding * 2))
+		local paletteHeight = math.floor(math.min(viewport.Y * metrics.PaletteHeight, metrics.PaletteMaxHeight))
 		gui.ActionPalette.AnchorPoint = Vector2.new(0.5,0.5)
 		gui.ActionPalette.Position = UDim2.new(0.5,0,0.5,0)
 		gui.ActionPalette.Size = UDim2.new(0,paletteWidth,0,paletteHeight)
