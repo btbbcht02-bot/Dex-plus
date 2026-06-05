@@ -14499,7 +14499,11 @@ DefaultSettings = (function()
 			Mode = "Auto", -- Auto, On, Off
 			UIScale = 1,
 			MinTapSize = 36,
-			DefaultPanelHeight = 0.82,
+			DefaultPanelHeight = 0.72,
+			CompactPanelHeight = 0.64,
+			FloatingLauncher = true,
+			LauncherSize = 46,
+			LauncherPosition = { X = 0.88, Y = 0.72 },
 			SinglePanel = true,
 			BottomNavigation = true,
 			ActionPalette = true
@@ -14626,6 +14630,8 @@ Main = (function()
 		local scale = math.clamp(tonumber(mobileSettings.UIScale) or 1, 0.75, 1.5)
 		local tap = math.floor(math.clamp(tonumber(mobileSettings.MinTapSize) or 36, 30, 56) * scale)
 		local navHeight = math.floor(math.max(44, tap + 12))
+		local launcherSize = math.floor(math.clamp(tonumber(mobileSettings.LauncherSize) or 46, 38, 58) * scale)
+		local launcherPosition = mobileSettings.LauncherPosition or {}
 		return {
 			Scale = scale,
 			MinTapSize = tap,
@@ -14633,7 +14639,12 @@ Main = (function()
 			BottomNavHeight = navHeight,
 			Padding = math.floor(8 * scale),
 			ResizeHandle = math.floor(12 * scale),
-			DefaultPanelHeight = math.clamp(tonumber(mobileSettings.DefaultPanelHeight) or 0.82, 0.55, 0.95)
+			DefaultPanelHeight = math.clamp(tonumber(mobileSettings.DefaultPanelHeight) or 0.72, 0.5, 0.9),
+			CompactPanelHeight = math.clamp(tonumber(mobileSettings.CompactPanelHeight) or 0.64, 0.45, 0.75),
+			LauncherSize = launcherSize,
+			LauncherX = math.clamp(tonumber(launcherPosition.X) or 0.88, 0, 1),
+			LauncherY = math.clamp(tonumber(launcherPosition.Y) or 0.72, 0, 1),
+			LauncherDragThreshold = math.max(6, math.floor(8 * scale))
 		}
 	end
 	
@@ -14643,12 +14654,12 @@ Main = (function()
 		local metrics = Main.GetMobileMetrics()
 		local margin = metrics.Padding
 		local usableWidth = math.max(220, viewport.X - margin * 2)
-		local usableHeight = math.max(160, viewport.Y - metrics.BottomNavHeight - margin * 2)
+		local usableHeight = math.max(160, viewport.Y - margin * 2)
 		local targetHeight = math.floor(usableHeight * metrics.DefaultPanelHeight)
 		window.SizeX = math.min(math.max(window.MinX or 220, usableWidth), usableWidth)
 		window.SizeY = math.min(math.max(window.MinY or 160, targetHeight), usableHeight)
 		local posX = margin
-		local posY = math.max(margin, viewport.Y - metrics.BottomNavHeight - window.SizeY - margin)
+		local posY = margin
 		window.GuiElems.Main.Position = UDim2.new(0, posX, 0, posY)
 		window.GuiElems.Main.Size = UDim2.new(0, window.SizeX, 0, window.Minimized and metrics.TitleBarHeight or window.SizeY)
 	end
@@ -15842,19 +15853,95 @@ Main = (function()
 		return control
 	end
 
-	Main.SetMainGuiOpen = function(val)
-		Main.MainGuiOpen = val
-
-		Main.MainGui.OpenButton.Text = val and "Close" or "Dex++"
-		if val then Main.MainGui.OpenButton.MainFrame.Visible = true end
-		local menuSize = UDim2.new(0,224,0,200)
+	Main.GetMobileMenuSize = function()
 		if Main.IsMobile() then
 			local metrics = Main.GetMobileMetrics()
 			local viewport = Main.GetViewportSize()
-			local menuHeight = math.max(140, math.floor(math.min(viewport.Y * 0.56, viewport.Y - metrics.BottomNavHeight - metrics.Padding * 3)))
-			menuSize = UDim2.new(1, -metrics.Padding * 2, 0, menuHeight)
+			local menuWidth = math.floor(math.min(300, viewport.X * 0.86))
+			local menuHeight = math.floor(math.min(viewport.Y * metrics.CompactPanelHeight, viewport.Y - metrics.Padding * 2))
+			return UDim2.new(0, menuWidth, 0, math.max(140, menuHeight))
 		end
-		Main.MainGui.OpenButton.MainFrame:TweenSize(val and menuSize or UDim2.new(0,0,0,0),Enum.EasingDirection.Out,Enum.EasingStyle.Quad,0.2,true)
+		return UDim2.new(0,224,0,200)
+	end
+
+	Main.ClampMobileLauncher = function(openButton)
+		if not Main.IsMobile() or not openButton then return end
+		local metrics = Main.GetMobileMetrics()
+		local viewport = Main.GetViewportSize()
+		local mobileSettings = Settings.Mobile or {}
+		mobileSettings.LauncherPosition = mobileSettings.LauncherPosition or { X = metrics.LauncherX, Y = metrics.LauncherY }
+		local usableX = math.max(1, viewport.X - metrics.LauncherSize - metrics.Padding * 2)
+		local usableY = math.max(1, viewport.Y - metrics.LauncherSize - metrics.Padding * 2)
+		local posX = metrics.Padding + usableX * math.clamp(tonumber(mobileSettings.LauncherPosition.X) or metrics.LauncherX, 0, 1)
+		local posY = metrics.Padding + usableY * math.clamp(tonumber(mobileSettings.LauncherPosition.Y) or metrics.LauncherY, 0, 1)
+		openButton.Position = UDim2.new(0, math.floor(posX), 0, math.floor(posY))
+	end
+
+	Main.PositionMobileMainFrame = function(menuSize)
+		if not Main.MainGui or not Main.IsMobile() then return end
+		local metrics = Main.GetMobileMetrics()
+		local viewport = Main.GetViewportSize()
+		local openButton = Main.MainGui.OpenButton
+		local frame = openButton.MainFrame
+		local menuWidth = menuSize.X.Offset
+		local menuHeight = menuSize.Y.Offset
+		local buttonPos = openButton.AbsolutePosition
+		local buttonSize = openButton.AbsoluteSize
+		local offsetX = buttonPos.X + buttonSize.X / 2 > viewport.X / 2 and buttonSize.X - menuWidth or 0
+		local offsetY = buttonPos.Y > viewport.Y / 2 and -menuHeight - metrics.Padding or buttonSize.Y + metrics.Padding
+		local absX = math.clamp(buttonPos.X + offsetX, metrics.Padding, math.max(metrics.Padding, viewport.X - menuWidth - metrics.Padding))
+		local absY = math.clamp(buttonPos.Y + offsetY, metrics.Padding, math.max(metrics.Padding, viewport.Y - menuHeight - metrics.Padding))
+		frame.AnchorPoint = Vector2.new(0,0)
+		frame.Position = UDim2.new(0, math.floor(absX - buttonPos.X), 0, math.floor(absY - buttonPos.Y))
+	end
+
+	Main.AttachMobileLauncherDrag = function(openButton)
+		if not Main.IsMobile() or not openButton or Main.MobileLauncherDragAttached then return end
+		Main.MobileLauncherDragAttached = true
+		openButton.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+			local metrics = Main.GetMobileMetrics()
+			local viewport = Main.GetViewportSize()
+			local startPosition = input.Position
+			local startButtonPosition = openButton.AbsolutePosition
+			local dragged = false
+			local moveEvent, releaseEvent
+			local function finish()
+				if moveEvent then moveEvent:Disconnect() end
+				if releaseEvent then releaseEvent:Disconnect() end
+				if dragged then Main.SuppressNextMainGuiClick = true end
+			end
+			moveEvent = service.UserInputService.InputChanged:Connect(function(moveInput)
+				if moveInput.UserInputType ~= input.UserInputType and moveInput.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+				local delta = moveInput.Position - startPosition
+				if math.abs(delta.X) > metrics.LauncherDragThreshold or math.abs(delta.Y) > metrics.LauncherDragThreshold then
+					dragged = true
+				end
+				if not dragged then return end
+				local newX = math.clamp(startButtonPosition.X + delta.X, metrics.Padding, viewport.X - metrics.LauncherSize - metrics.Padding)
+				local newY = math.clamp(startButtonPosition.Y + delta.Y, metrics.Padding, viewport.Y - metrics.LauncherSize - metrics.Padding)
+				openButton.Position = UDim2.new(0, math.floor(newX), 0, math.floor(newY))
+				local mobileSettings = Settings.Mobile or {}
+				mobileSettings.LauncherPosition = mobileSettings.LauncherPosition or {}
+				mobileSettings.LauncherPosition.X = math.clamp((newX - metrics.Padding) / math.max(1, viewport.X - metrics.LauncherSize - metrics.Padding * 2), 0, 1)
+				mobileSettings.LauncherPosition.Y = math.clamp((newY - metrics.Padding) / math.max(1, viewport.Y - metrics.LauncherSize - metrics.Padding * 2), 0, 1)
+			end)
+			releaseEvent = service.UserInputService.InputEnded:Connect(function(endInput)
+				if endInput.UserInputType == input.UserInputType or endInput.UserInputType == Enum.UserInputType.MouseButton1 then
+					finish()
+				end
+			end)
+		end)
+	end
+
+	Main.SetMainGuiOpen = function(val)
+		Main.MainGuiOpen = val
+
+		Main.MainGui.OpenButton.Text = Main.IsMobile() and (val and "X" or "D++") or (val and "Close" or "Dex++")
+		if val then Main.MainGui.OpenButton.MainFrame.Visible = true end
+		local menuSize = Main.GetMobileMenuSize()
+		if Main.IsMobile() then Main.PositionMobileMainFrame(menuSize) end
+		Main.MainGui.OpenButton.MainFrame:TweenSize(val and Main.GetMobileMenuSize() or UDim2.new(0,0,0,0),Enum.EasingDirection.Out,Enum.EasingStyle.Quad,0.2,true)
 		--Main.MainGui.OpenButton.BackgroundTransparency = val and 0 or (Lib.CheckMouseInGui(Main.MainGui.OpenButton) and 0 or 0.2)
 		service.TweenService:Create(Main.MainGui.OpenButton,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency = val and 0 or (Lib.CheckMouseInGui(Main.MainGui.OpenButton) and 0 or 0.2)}):Play()
 
@@ -15936,14 +16023,18 @@ Main = (function()
 	Main.ApplyMobileMainGui = function()
 		if not Main.MainGui or not Main.IsMobile() then return end
 		local metrics = Main.GetMobileMetrics()
+		local viewport = Main.GetViewportSize()
 		local gui = Main.MainGui
 		local openButton = gui.OpenButton
-		openButton.AnchorPoint = Vector2.new(0.5,1)
-		openButton.Position = UDim2.new(0.5,0,1,-metrics.Padding)
-		openButton.Size = UDim2.new(1,-metrics.Padding*2,0,metrics.BottomNavHeight)
-		openButton.TextSize = 18
-		openButton.MainFrame.AnchorPoint = Vector2.new(0.5,1)
-		openButton.MainFrame.Position = UDim2.new(0.5,0,0,-metrics.Padding)
+		openButton.AnchorPoint = Vector2.new(0,0)
+		openButton.Size = UDim2.new(0,metrics.LauncherSize,0,metrics.LauncherSize)
+		openButton.Text = "D++"
+		openButton.TextSize = 14
+		openButton.TextTransparency = 0
+		openButton.UICorner.CornerRadius = UDim.new(1,0)
+		Main.ClampMobileLauncher(openButton)
+		Main.AttachMobileLauncherDrag(openButton)
+		openButton.MainFrame.AnchorPoint = Vector2.new(0,0)
 		openButton.MainFrame.BottomFrame.Size = UDim2.new(1,0,0,metrics.MinTapSize)
 		openButton.MainFrame.BottomFrame.Position = UDim2.new(0,0,1,-metrics.MinTapSize)
 		openButton.MainFrame.BottomFrame.Settings.Size = UDim2.new(0,metrics.MinTapSize,1,0)
@@ -15954,13 +16045,26 @@ Main = (function()
 		openButton.MainFrame.BottomFrame.ActionSearch.Position = UDim2.new(0,0,0,0)
 		openButton.MainFrame.BottomFrame.ResetLayout.Size = UDim2.new(0,metrics.MinTapSize,1,0)
 		openButton.MainFrame.BottomFrame.ResetLayout.Position = UDim2.new(0,metrics.MinTapSize,0,0)
-		Main.AppsFrame.Size = UDim2.new(1,-8,1,-metrics.MinTapSize-8)
+		Main.AppsFrame.Size = UDim2.new(1,-8,1,-metrics.MinTapSize-6)
 		Main.AppsFrame.Position = UDim2.new(0.5,0,0,0)
-		Main.AppsContainer.Position = UDim2.new(0,8,0,8)
-		Main.AppsContainer.Size = UDim2.new(1,-16,0,2)
-		Main.AppsContainerGrid.CellSize = UDim2.new(0,math.max(82, metrics.MinTapSize * 2),0,metrics.MinTapSize + 34)
-		gui.ActionPalette.Position = UDim2.new(0,metrics.Padding,0,metrics.Padding)
-		gui.ActionPalette.Size = UDim2.new(1,-metrics.Padding*2,1,-metrics.BottomNavHeight-metrics.Padding*3)
+		Main.AppsContainer.Position = UDim2.new(0,6,0,6)
+		Main.AppsContainer.Size = UDim2.new(1,-12,0,2)
+		Main.AppsContainerGrid.CellSize = UDim2.new(0,math.max(66, metrics.MinTapSize + 28),0,metrics.MinTapSize + 22)
+		for _, control in ipairs(Main.AppSequence) do
+			if control.Button then
+				control.Button.Size = UDim2.new(1,0,0,metrics.MinTapSize + 18)
+				control.Button.Icon.Size = UDim2.new(0,26,0,26)
+				control.Button.Icon.Position = UDim2.new(0.5,-13,0,4)
+				control.Button.AppName.Position = UDim2.new(0,2,0,32)
+				control.Button.AppName.Size = UDim2.new(1,-4,1,-34)
+				control.Button.AppName.TextSize = 12
+			end
+		end
+		local paletteWidth = math.floor(math.min(330, viewport.X - metrics.Padding * 2))
+		local paletteHeight = math.floor(math.min(viewport.Y * 0.62, viewport.Y - metrics.Padding * 2))
+		gui.ActionPalette.AnchorPoint = Vector2.new(0.5,0.5)
+		gui.ActionPalette.Position = UDim2.new(0.5,0,0.5,0)
+		gui.ActionPalette.Size = UDim2.new(0,paletteWidth,0,paletteHeight)
 		Main.ResetMobileLayout()
 	end
 
@@ -16002,6 +16106,7 @@ Main = (function()
 		Main.AppsContainerGrid = Main.AppsContainer.UIGridLayout
 		Main.AppTemplate = gui.App
 		Main.MainGuiOpen = false
+		Main.MobileLauncherDragAttached = false
 
 		local openButton = gui.OpenButton
 		openButton.BackgroundColor3 = Settings.Theme.Main2
@@ -16022,6 +16127,10 @@ Main = (function()
 		openButton.MainFrame.Size = UDim2.new(0,0,0,0)
 		openButton.MainFrame.Visible = false
 		openButton.MouseButton1Click:Connect(function()
+			if Main.SuppressNextMainGuiClick then
+				Main.SuppressNextMainGuiClick = false
+				return
+			end
 			Main.SetMainGuiOpen(not Main.MainGuiOpen)
 		end)
 
@@ -16149,6 +16258,16 @@ Main = (function()
 		makefolder("dex/ModuleCache")
 	end
 
+	Main.EnsureBundledPlugins = function()
+		if not env.writefile or not env.makefolder then return end
+		env.makefolder("dex")
+		env.makefolder("dex/plugins")
+		local plugin_src = Main.BundledRemoteSpyPluginSource
+		if plugin_src and plugin_src ~= "" then
+			env.writefile("dex/plugins/RemoteSpy.lua", plugin_src)
+		end
+	end
+
 	Main.SaveCurrentSettings = function()
 		if writefile then
 			writefile("DexPlusPlusSettings.json", Main.ExportSettings())
@@ -16171,6 +16290,7 @@ Main = (function()
 		Main.LoadSettings() -- loads the settings before init
 		
 		Main.SetupFilesystem()
+		Main.EnsureBundledPlugins()
 
 		-- Load Lib
 		local intro = Main.CreateIntro("Initializing Library")
@@ -16322,15 +16442,10 @@ Main = (function()
 	return Main
 end)()
 
--- Start
-Main.Init()
-
---for i,v in pairs(Main.MissingEnv) do print(i,v) end
-
 -- Rspy Plugin
 
-local plugin_src = [[
-local main_ref, lib_ref, apps_ref, settings_ref
+Main.BundledRemoteSpyPluginSource = [=[
+local main_ref, lib_ref, apps_ref, settings_ref, env_ref
 local explorer_ref, properties_ref
  
 local plugin_data = {
@@ -16343,6 +16458,7 @@ local function initDeps(data)
 	lib_ref      = data.Lib
 	apps_ref     = data.Apps
 	settings_ref = data.Settings
+	env_ref      = data.env or {}
 end
  
 local function initAfterMain(t)
@@ -16399,6 +16515,10 @@ local function main()
 	local spy = {}
 	local Settings = settings_ref or { Performance = {} }
 	Settings.Performance = Settings.Performance or {}
+	env_ref = env_ref or {}
+	local hook_namecall = env_ref.hookmetamethod or hookmetamethod
+	local set_clipboard = env_ref.setclipboard or setclipboard
+	local get_nil_instances = env_ref.getnilinstances or getnilinstances
 	spy.PluginData = plugin_data
  
 	local logs        = {}
@@ -16530,8 +16650,8 @@ local function main()
 		row.InputBegan:Connect(function(i)
 			if i.UserInputType == Enum.UserInputType.MouseMovement then
 				row.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-			elseif i.UserInputType == Enum.UserInputType.MouseButton2 and setclipboard then
-				setclipboard(entry.path)
+			elseif i.UserInputType == Enum.UserInputType.MouseButton2 and set_clipboard then
+				set_clipboard(entry.path)
 			end
 		end)
 		row.InputEnded:Connect(function(i)
@@ -16603,19 +16723,28 @@ local function main()
 		if active then return end
 		active = true
  
-		if hookmetamethod and not namecall_orig then
-			local ok, orig = pcall(hookmetamethod, game, "__namecall", function(self, ...)
-				local method = getnamecallmethod and getnamecallmethod() or ""
-				if active
-					and typeof(self) == "Instance"
-					and remote_classes[self.ClassName]
-					and out_methods[method]
-				then
-					add_log("out", self, method, table.pack(...))
+		if hook_namecall and not namecall_orig then
+			local oldNamecall
+			local ok, orig = pcall(function()
+				oldNamecall = hook_namecall(game, "__namecall", function(self, ...)
+					local method = getnamecallmethod and getnamecallmethod() or ""
+					if active
+						and typeof(self) == "Instance"
+						and remote_classes[self.ClassName]
+						and out_methods[method]
+					then
+						add_log("out", self, method, table.pack(...))
+					end
+					return oldNamecall(self, ...)
 				end
-				return namecall_orig(self, ...)
+				return oldNamecall
 			end)
 			if ok then namecall_orig = orig end
+		elseif status_label then
+			status_label.Text = "hook unsupported"
+		end
+		if active and not namecall_orig and status_label then
+			status_label.Text = hook_namecall and "incoming only" or "hook unsupported"
 		end
  
 		local ok, descs = pcall(game.GetDescendants, game)
@@ -16625,8 +16754,8 @@ local function main()
 			end
 		end
  
-		if getnilinstances then
-			local ok2, nil_insts = pcall(getnilinstances)
+		if get_nil_instances then
+			local ok2, nil_insts = pcall(get_nil_instances)
 			if ok2 then
 				for _, inst in ipairs(nil_insts) do
 					hook_instance(inst)
@@ -16795,13 +16924,13 @@ local function main()
 		end)
  
 		copy_btn.MouseButton1Click:Connect(function()
-			if not setclipboard then return end
+			if not set_clipboard then return end
 			local lines = {}
 			for _, e in ipairs(logs) do
 				lines[#lines + 1] = string.format("[%s] %s %s:%s() | %s",
 					e.time, e.dir, e.path, e.method, e.args)
 			end
-			setclipboard(table.concat(lines, "\n"))
+			set_clipboard(table.concat(lines, "\n"))
 		end)
  
 		window.OnActivate:Connect(function()
@@ -16829,12 +16958,12 @@ return {
 	PluginData    = plugin_data,
 }
  
-]]
- 
-if not isfolder("dex")         then makefolder("dex")         end
-if not isfolder("dex/plugins") then makefolder("dex/plugins") end
- 
-writefile("dex/plugins/RemoteSpy.lua", plugin_src)
+]=]
+
+-- Start
+Main.Init()
+
+--for i,v in pairs(Main.MissingEnv) do print(i,v) end
 
 -- Adonis related 
 local function InitAdonisBypass()
