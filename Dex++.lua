@@ -14878,14 +14878,18 @@ Main = (function()
 		handle.Parent = mainFrame
 		local corner = Instance.new("UICorner", handle)
 		corner.CornerRadius = UDim.new(1,0)
-		Lib.ApplyModernStroke(handle, Settings.Theme.AccentGlow, 0.35)
+		if Lib and Lib.ApplyModernStroke then
+			Lib.ApplyModernStroke(handle, Settings.Theme.AccentGlow, 0.35)
+		end
 		local resizing = false
 		local moveCon, endCon, startPos, startSize
 		local function refreshHandle()
+			if not handle.Parent then return end
+			local mobileSettings = Settings.Mobile or {}
 			local metrics = Main.GetMobileMetrics()
 			handle.Size = UDim2.new(0, metrics.ResizeHandleSize, 0, metrics.ResizeHandleSize)
 			handle.Position = UDim2.new(1, -2, 1, -2)
-			handle.Visible = Main.IsMobile() and Settings.Mobile.ResizeEnabled ~= false and not window.Minimized
+			handle.Visible = Main.IsMobile() and mobileSettings.ResizeEnabled ~= false and not window.Minimized
 		end
 		refreshHandle()
 		window.OnMinimize:Connect(refreshHandle)
@@ -14899,6 +14903,7 @@ Main = (function()
 			if endCon then endCon:Disconnect() end
 			moveCon = service.UserInputService.InputChanged:Connect(function(moveInput)
 				if not resizing or (moveInput.UserInputType ~= input.UserInputType and moveInput.UserInputType ~= Enum.UserInputType.MouseMovement) then return end
+				if not startPos or not startSize then return end
 				local viewport = Main.GetViewportSize()
 				local metrics = Main.GetMobileMetrics()
 				local layoutBudget = Main.GetMobileLayoutBudget(viewport, metrics)
@@ -16232,7 +16237,9 @@ Main = (function()
 
 	Main.RefreshDiagnosticsSummary = function()
 		if not Main.MainGui then return end
-		local hub = Main.MainGui.OpenButton.MainFrame:FindFirstChild("DexHub")
+		local openButton = Main.MainGui and Main.MainGui.OpenButton
+		local frame = openButton and openButton:FindFirstChild("MainFrame")
+		local hub = frame and frame:FindFirstChild("DexHub")
 		local statusPanel = hub and hub:FindFirstChild("StatusPanel")
 		local label = statusPanel and statusPanel:FindFirstChild("StatusSummary")
 		if not label then return end
@@ -16245,27 +16252,45 @@ Main = (function()
 
 	Main.SetDexHubTab = function(tabName)
 		if not Main.MainGui then return end
-		local frame = Main.MainGui.OpenButton.MainFrame
-		local hub = frame:FindFirstChild("DexHub")
+		local openButton = Main.MainGui and Main.MainGui.OpenButton
+		local frame = openButton and openButton:FindFirstChild("MainFrame")
+		local hub = frame and frame:FindFirstChild("DexHub")
 		if not hub then return end
 		local toolsPanel = hub:FindFirstChild("ToolsPanel")
 		local statusPanel = hub:FindFirstChild("StatusPanel")
-		Main.AppsFrame.Visible = tabName == "Apps"
+		if Main.AppsFrame then Main.AppsFrame.Visible = tabName == "Apps" end
 		if toolsPanel then toolsPanel.Visible = tabName == "Tools" end
 		if statusPanel then statusPanel.Visible = tabName == "Status" end
-		for _, tab in pairs(hub.DexHubTabs:GetChildren()) do
-			if tab:IsA("TextButton") then
-				tab.BackgroundColor3 = tab.Name == tabName.."Tab" and Settings.Theme.AccentSoft or Settings.Theme.Button
+		local tabs = hub:FindFirstChild("DexHubTabs")
+		if tabs then
+			for _, tab in pairs(tabs:GetChildren()) do
+				if tab:IsA("TextButton") then
+					tab.BackgroundColor3 = tab.Name == tabName.."Tab" and Settings.Theme.AccentSoft or Settings.Theme.Button
+				end
 			end
 		end
 		if tabName == "Status" then Main.RefreshDiagnosticsSummary() end
 	end
 
 	Main.CreateApp = function(data)
-		if Main.MenuApps[data.Name] then return end -- TODO: Handle conflict
+		data = data or {}
+		local appName = tostring(data.Name or "Unnamed App")
+		if Main.MenuApps[appName] then return end -- TODO: Handle conflict
+		if not Main.AppTemplate then
+			warn("Dex++ app template missing for "..appName)
+			return nil
+		end
+		if not Main.AppsContainer or not Main.AppsFrame or not Main.AppsContainerGrid then
+			warn("Dex++ app container missing for "..appName)
+			return nil
+		end
 		local control = {}
 
 		local app = Main.AppTemplate:Clone()
+		if not app or not app:FindFirstChild("Main") then
+			warn("Dex++ app template invalid for "..appName)
+			return nil
+		end
 		Lib.ApplyModernFrameStyle(app.Main, 6, Settings.Theme.Outline2, 0.82)
 		local appStroke = app.Main:FindFirstChild("ModernStroke")
 		app.Main.BackgroundColor3 = Settings.Theme.Button
@@ -16286,6 +16311,7 @@ Main = (function()
 		end
 
 		local function updateState()
+			if not app or not app.Main then return end
 			local inactiveTransparency = Main.IsMobile() and 0.12 or (Lib.CheckMouseInGui(app.Main) and 0 or 1)
 			app.Main.BackgroundTransparency = data.Open and 0 or inactiveTransparency
 			if appStroke then
@@ -16317,11 +16343,12 @@ Main = (function()
 
 		updateState()
 
-		local ySize = service.TextService:GetTextSize(data.Name,14,Enum.Font.SourceSans,Vector2.new(62,999999)).Y
+		local ySize = service.TextService:GetTextSize(appName,14,Enum.Font.SourceSans,Vector2.new(62,999999)).Y
 		app.Main.Size = UDim2.new(1,0,0,math.clamp(46+ySize,60,74))
-		app.Main.AppName.Text = data.Name
+		app.Main.AppName.Text = appName
 
 		app.Main.InputBegan:Connect(function(input)
+			if not app or not app.Parent or not app.Main then return end
 			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
 				app.Main.BackgroundTransparency = 0
 				app.Main.BackgroundColor3 = Settings.Theme.ButtonHover
@@ -16330,8 +16357,9 @@ Main = (function()
 		
 
 		app.Main.InputEnded:Connect(function(input)
+			if not app or not app.Parent or not app.Main then return end
 			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-				app.Main.BackgroundTransparency = data.Open and 0 or 1
+				app.Main.BackgroundTransparency = data.Open and 0 or (Main.IsMobile() and 0.12 or 1)
 				app.Main.BackgroundColor3 = Settings.Theme.Button
 			end
 		end)
@@ -16352,11 +16380,11 @@ Main = (function()
 
 		control.Enable = enable
 		control.Disable = disable
-		control.Name = data.Name
+		control.Name = appName
 		control.Window = data.Window
 		control.Button = app.Main
 		control.OnClick = data.OnClick
-		Main.MenuApps[data.Name] = control
+		Main.MenuApps[appName] = control
 		table.insert(Main.AppSequence, control)
 		return control
 	end
@@ -16443,18 +16471,21 @@ Main = (function()
 
 	Main.SetMainGuiOpen = function(val)
 		Main.MainGuiOpen = val
+		local openButton = Main.MainGui and Main.MainGui.OpenButton
+		local frame = openButton and openButton:FindFirstChild("MainFrame")
+		if not openButton or not frame then return end
 
-		Main.MainGui.OpenButton.Text = Main.IsMobile() and (val and "X" or "D") or (val and "Close" or "Dex++")
-		if val then Main.MainGui.OpenButton.MainFrame.Visible = true end
+		openButton.Text = Main.IsMobile() and (val and "X" or "D") or (val and "Close" or "Dex++")
+		if val then frame.Visible = true end
 		local menuSize = Main.GetMobileMenuSize()
 		if Main.IsMobile() then Main.PositionMobileMainFrame(menuSize) end
 		if val then Main.RefreshDiagnosticsSummary() end
-		Main.MainGui.OpenButton.MainFrame:TweenSize(val and Main.GetMobileMenuSize() or UDim2.new(0,0,0,0),Enum.EasingDirection.Out,Enum.EasingStyle.Quad,0.2,true)
+		frame:TweenSize(val and Main.GetMobileMenuSize() or UDim2.new(0,0,0,0),Enum.EasingDirection.Out,Enum.EasingStyle.Quad,0.2,true)
 		if Main.IsMobile() and not val then
-			Main.MainGui.OpenButton.MainFrame.Size = UDim2.new(0,0,0,0)
+			frame.Size = UDim2.new(0,0,0,0)
 		end
-		--Main.MainGui.OpenButton.BackgroundTransparency = val and 0 or (Lib.CheckMouseInGui(Main.MainGui.OpenButton) and 0 or 0.2)
-		service.TweenService:Create(Main.MainGui.OpenButton,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency = val and 0 or (Lib.CheckMouseInGui(Main.MainGui.OpenButton) and 0 or 0.2)}):Play()
+		--openButton.BackgroundTransparency = val and 0 or (Lib.CheckMouseInGui(openButton) and 0 or 0.2)
+		service.TweenService:Create(openButton,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency = val and 0 or (Lib.CheckMouseInGui(openButton) and 0 or 0.2)}):Play()
 
 		if Main.MainGuiMouseEvent then Main.MainGuiMouseEvent:Disconnect() end
 
@@ -16463,11 +16494,12 @@ Main = (function()
 			Main.MainGuiCloseTime = startTime
 			coroutine.wrap(function()
 				Lib.FastWait(0.2)
-				if not Main.MainGuiOpen and startTime == Main.MainGuiCloseTime then Main.MainGui.OpenButton.MainFrame.Visible = false end
+				if not Main.MainGuiOpen and startTime == Main.MainGuiCloseTime and frame.Parent then frame.Visible = false end
 			end)()
 		else
 			Main.MainGuiMouseEvent = service.UserInputService.InputBegan:Connect(function(input)
-				if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not Lib.CheckMouseInGui(Main.MainGui.OpenButton) and not Lib.CheckMouseInGui(Main.MainGui.OpenButton.MainFrame) then
+				if not openButton.Parent or not frame.Parent then return end
+				if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not Lib.CheckMouseInGui(openButton) and not Lib.CheckMouseInGui(frame) then
 
 					Main.SetMainGuiOpen(false)
 				end
@@ -16538,6 +16570,13 @@ Main = (function()
 		local layoutBudget = Main.GetMobileLayoutBudget(viewport, metrics)
 		local gui = Main.MainGui
 		local openButton = gui.OpenButton
+		local mainFrame = openButton and openButton:FindFirstChild("MainFrame")
+		local bottomFrame = mainFrame and mainFrame:FindFirstChild("BottomFrame")
+		local dexHub = mainFrame and mainFrame:FindFirstChild("DexHub")
+		local tabs = dexHub and dexHub:FindFirstChild("DexHubTabs")
+		local toolsPanel = dexHub and dexHub:FindFirstChild("ToolsPanel")
+		local statusPanel = dexHub and dexHub:FindFirstChild("StatusPanel")
+		if not openButton or not mainFrame or not bottomFrame or not dexHub then return end
 		openButton.AnchorPoint = Vector2.new(0,0)
 		openButton.Size = UDim2.new(0,metrics.LauncherSize,0,metrics.LauncherSize)
 		openButton.Text = "D"
@@ -16546,29 +16585,51 @@ Main = (function()
 		openButton.UICorner.CornerRadius = UDim.new(1,0)
 		Main.ClampMobileLauncher(openButton)
 		Main.AttachMobileLauncherDrag(openButton)
-		openButton.MainFrame.AnchorPoint = Vector2.new(0,0)
-		openButton.MainFrame.DexHub.Visible = true
-		openButton.MainFrame.DexHub.Size = UDim2.new(1,0,1,0)
-		openButton.MainFrame.DexHub.DexHubTabs.Size = UDim2.new(1,-12,0,math.max(20, metrics.RowHeight + 2))
-		openButton.MainFrame.DexHub.ToolsPanel.Position = UDim2.new(0,6,0,metrics.RowHeight + 32)
-		openButton.MainFrame.DexHub.ToolsPanel.Size = UDim2.new(1,-12,1,-metrics.MinTapSize-metrics.RowHeight-42)
-		openButton.MainFrame.DexHub.StatusPanel.Position = UDim2.new(0,6,0,metrics.RowHeight + 32)
-		openButton.MainFrame.DexHub.StatusPanel.Size = UDim2.new(1,-12,1,-metrics.MinTapSize-metrics.RowHeight-42)
-		openButton.MainFrame.BottomFrame.Size = UDim2.new(1,0,0,metrics.MinTapSize)
-		openButton.MainFrame.BottomFrame.Position = UDim2.new(0,0,1,-metrics.MinTapSize)
-		openButton.MainFrame.BottomFrame.Settings.Size = UDim2.new(0,metrics.MinTapSize,1,0)
-		openButton.MainFrame.BottomFrame.Settings.Position = UDim2.new(1,-metrics.MinTapSize*2,0,0)
-		openButton.MainFrame.BottomFrame.Information.Size = UDim2.new(0,metrics.MinTapSize,1,0)
-		openButton.MainFrame.BottomFrame.Information.Position = UDim2.new(1,-metrics.MinTapSize,0,0)
-		openButton.MainFrame.BottomFrame.ActionSearch.Size = UDim2.new(0,metrics.MinTapSize,1,0)
-		openButton.MainFrame.BottomFrame.ActionSearch.Position = UDim2.new(0,0,0,0)
-		openButton.MainFrame.BottomFrame.ResetLayout.Size = UDim2.new(0,metrics.MinTapSize,1,0)
-		openButton.MainFrame.BottomFrame.ResetLayout.Position = UDim2.new(0,metrics.MinTapSize,0,0)
-		Main.AppsFrame.Size = UDim2.new(1,-8,1,-metrics.MinTapSize-metrics.RowHeight-42)
-		Main.AppsFrame.Position = UDim2.new(0.5,0,0,metrics.RowHeight + 32)
-		Main.AppsContainer.Position = UDim2.new(0,5,0,5)
-		Main.AppsContainer.Size = UDim2.new(1,-10,0,2)
-		Main.AppsContainerGrid.CellSize = UDim2.new(0,math.max(42, metrics.RowHeight + 14),0,metrics.RowHeight + 14)
+		mainFrame.AnchorPoint = Vector2.new(0,0)
+		dexHub.Visible = true
+		dexHub.Size = UDim2.new(1,0,1,0)
+		if tabs then tabs.Size = UDim2.new(1,-12,0,math.max(20, metrics.RowHeight + 2)) end
+		if toolsPanel then
+			toolsPanel.Position = UDim2.new(0,6,0,metrics.RowHeight + 32)
+			toolsPanel.Size = UDim2.new(1,-12,1,-metrics.MinTapSize-metrics.RowHeight-42)
+		end
+		if statusPanel then
+			statusPanel.Position = UDim2.new(0,6,0,metrics.RowHeight + 32)
+			statusPanel.Size = UDim2.new(1,-12,1,-metrics.MinTapSize-metrics.RowHeight-42)
+		end
+		bottomFrame.Size = UDim2.new(1,0,0,metrics.MinTapSize)
+		bottomFrame.Position = UDim2.new(0,0,1,-metrics.MinTapSize)
+		local settingsButton = bottomFrame:FindFirstChild("Settings")
+		local informationButton = bottomFrame:FindFirstChild("Information")
+		local actionSearchButton = bottomFrame:FindFirstChild("ActionSearch")
+		local resetLayoutButton = bottomFrame:FindFirstChild("ResetLayout")
+		if settingsButton then
+			settingsButton.Size = UDim2.new(0,metrics.MinTapSize,1,0)
+			settingsButton.Position = UDim2.new(1,-metrics.MinTapSize*2,0,0)
+		end
+		if informationButton then
+			informationButton.Size = UDim2.new(0,metrics.MinTapSize,1,0)
+			informationButton.Position = UDim2.new(1,-metrics.MinTapSize,0,0)
+		end
+		if actionSearchButton then
+			actionSearchButton.Size = UDim2.new(0,metrics.MinTapSize,1,0)
+			actionSearchButton.Position = UDim2.new(0,0,0,0)
+		end
+		if resetLayoutButton then
+			resetLayoutButton.Size = UDim2.new(0,metrics.MinTapSize,1,0)
+			resetLayoutButton.Position = UDim2.new(0,metrics.MinTapSize,0,0)
+		end
+		if Main.AppsFrame then
+			Main.AppsFrame.Size = UDim2.new(1,-8,1,-metrics.MinTapSize-metrics.RowHeight-42)
+			Main.AppsFrame.Position = UDim2.new(0.5,0,0,metrics.RowHeight + 32)
+		end
+		if Main.AppsContainer then
+			Main.AppsContainer.Position = UDim2.new(0,5,0,5)
+			Main.AppsContainer.Size = UDim2.new(1,-10,0,2)
+		end
+		if Main.AppsContainerGrid then
+			Main.AppsContainerGrid.CellSize = UDim2.new(0,math.max(42, metrics.RowHeight + 14),0,metrics.RowHeight + 14)
+		end
 		for _, control in ipairs(Main.AppSequence) do
 			if control.Button then
 				control.Button.Size = UDim2.new(1,0,0,metrics.RowHeight + 12)
@@ -16636,38 +16697,52 @@ Main = (function()
 			{43,"TextLabel",{BackgroundTransparency=1,Font=3,Name="StatusSummary",Parent={42},Size=UDim2.new(1,0,1,0),Text="Diagnostics",TextColor3=Color3.new(1,1,1),TextSize=11,TextWrapped=true,TextXAlignment=0,TextYAlignment=0,ZIndex=7,}},
 		})
 		Main.MainGui = gui
-		Main.AppsFrame = gui.OpenButton.MainFrame.AppsFrame
-		Main.AppsContainer = Main.AppsFrame.Container
-		Main.AppsContainerGrid = Main.AppsContainer.UIGridLayout
-		Main.AppTemplate = gui.App
+		local openButton = gui.OpenButton
+		local mainFrame = openButton and openButton:FindFirstChild("MainFrame")
+		local bottomFrame = mainFrame and mainFrame:FindFirstChild("BottomFrame")
+		local coverFrame = bottomFrame and bottomFrame:FindFirstChild("CoverFrame")
+		local bottomLine = coverFrame and coverFrame:FindFirstChild("Line")
+		local dexHub = mainFrame and mainFrame:FindFirstChild("DexHub")
+		local dexHubTitle = dexHub and dexHub:FindFirstChild("DexHubTitle")
+		local tabs = dexHub and dexHub:FindFirstChild("DexHubTabs")
+		local toolsPanel = dexHub and dexHub:FindFirstChild("ToolsPanel")
+		Main.AppsFrame = mainFrame and mainFrame:FindFirstChild("AppsFrame")
+		Main.AppsContainer = Main.AppsFrame and Main.AppsFrame:FindFirstChild("Container")
+		Main.AppsContainerGrid = Main.AppsContainer and Main.AppsContainer:FindFirstChildOfClass("UIGridLayout")
+		Main.AppTemplate = gui:FindFirstChild("App")
 		Main.MainGuiOpen = false
 		Main.MobileLauncherDragAttached = false
 
-		local openButton = gui.OpenButton
 		openButton.BackgroundColor3 = Settings.Theme.Main2
 		openButton.TextColor3 = Settings.Theme.Text
-		openButton.MainFrame.BackgroundColor3 = Settings.Theme.Main1
-		openButton.MainFrame.BottomFrame.BackgroundColor3 = Settings.Theme.Main2
-		openButton.MainFrame.BottomFrame.CoverFrame.Line.BackgroundColor3 = Settings.Theme.AccentSoft
-		openButton.MainFrame.DexHub.DexHubTitle.TextColor3 = Settings.Theme.AccentGlow
+		if mainFrame then mainFrame.BackgroundColor3 = Settings.Theme.Main1 end
+		if bottomFrame then bottomFrame.BackgroundColor3 = Settings.Theme.Main2 end
+		if bottomLine then bottomLine.BackgroundColor3 = Settings.Theme.AccentSoft end
+		if dexHubTitle then dexHubTitle.TextColor3 = Settings.Theme.AccentGlow end
 		gui.ActionPalette.BackgroundColor3 = Settings.Theme.SurfaceGlass
 		gui.ActionPalette.PaletteSearch.BackgroundColor3 = Settings.Theme.TextBox
 		gui.ActionPalette.PaletteSearch.PlaceholderColor3 = Settings.Theme.PlaceholderText
 		gui.ActionPalette.PaletteSearch.TextColor3 = Settings.Theme.Text
 		Lib.ApplyModernFrameStyle(openButton, 6, Settings.Theme.AccentSoft, 0.55)
-		Lib.ApplyModernFrameStyle(openButton.MainFrame, 7, Settings.Theme.AccentSoft, 0.62)
-		Lib.ApplyModernStroke(openButton.MainFrame.BottomFrame, Settings.Theme.AccentSoft, 0.72)
-		for _, tab in pairs(openButton.MainFrame.DexHub.DexHubTabs:GetChildren()) do
-			if tab:IsA("TextButton") then Lib.ApplyModernFrameStyle(tab, 5, Settings.Theme.Outline2, 0.72) end
+		if mainFrame then Lib.ApplyModernFrameStyle(mainFrame, 7, Settings.Theme.AccentSoft, 0.62) end
+		if bottomFrame then Lib.ApplyModernStroke(bottomFrame, Settings.Theme.AccentSoft, 0.72) end
+		if tabs then
+			for _, tab in pairs(tabs:GetChildren()) do
+				if tab:IsA("TextButton") then Lib.ApplyModernFrameStyle(tab, 5, Settings.Theme.Outline2, 0.72) end
+			end
 		end
-		for _, tool in pairs(openButton.MainFrame.DexHub.ToolsPanel:GetChildren()) do
-			if tool:IsA("TextButton") then Lib.ApplyModernFrameStyle(tool, 5, Settings.Theme.Outline2, 0.72) end
+		if toolsPanel then
+			for _, tool in pairs(toolsPanel:GetChildren()) do
+				if tool:IsA("TextButton") then Lib.ApplyModernFrameStyle(tool, 5, Settings.Theme.Outline2, 0.72) end
+			end
 		end
 		Lib.ApplyModernFrameStyle(gui.ActionPalette, 8, Settings.Theme.AccentSoft, 0.45)
 		Lib.ApplyModernFrameStyle(gui.ActionPalette.PaletteSearch, 5, Settings.Theme.Outline2, 0.62)
 		openButton.BackgroundTransparency = 0.2
-		openButton.MainFrame.Size = UDim2.new(0,0,0,0)
-		openButton.MainFrame.Visible = false
+		if mainFrame then
+			mainFrame.Size = UDim2.new(0,0,0,0)
+			mainFrame.Visible = false
+		end
 		openButton.MouseButton1Click:Connect(function()
 			if Main.SuppressNextMainGuiClick then
 				Main.SuppressNextMainGuiClick = false
@@ -16678,104 +16753,139 @@ Main = (function()
 
 		openButton.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-				service.TweenService:Create(Main.MainGui.OpenButton,TweenInfo.new(0,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
+				service.TweenService:Create(openButton,TweenInfo.new(0,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency = 0}):Play()
 			end
 		end)
 
 		openButton.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-				service.TweenService:Create(Main.MainGui.OpenButton,TweenInfo.new(0,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency = Main.MainGuiOpen and 0 or 0.2}):Play()
+				service.TweenService:Create(openButton,TweenInfo.new(0,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency = Main.MainGuiOpen and 0 or 0.2}):Play()
 			end
 		end)
 		
 		local infoDexIntro, isInfoCD
 		
-		--openButton.MainFrame.BottomFrame.Settings.Visible = false
+		local settingsButton = bottomFrame and bottomFrame:FindFirstChild("Settings")
+		local informationButton = bottomFrame and bottomFrame:FindFirstChild("Information")
+		local actionSearchButton = bottomFrame and bottomFrame:FindFirstChild("ActionSearch")
+		local resetLayoutButton = bottomFrame and bottomFrame:FindFirstChild("ResetLayout")
+		local appsTab = tabs and tabs:FindFirstChild("AppsTab")
+		local toolsTab = tabs and tabs:FindFirstChild("ToolsTab")
+		local statusTab = tabs and tabs:FindFirstChild("StatusTab")
+		local searchTool = toolsPanel and toolsPanel:FindFirstChild("SearchTool")
+		local resetTool = toolsPanel and toolsPanel:FindFirstChild("ResetTool")
+		local compactPreset = toolsPanel and toolsPanel:FindFirstChild("CompactPreset")
+		local mediumPreset = toolsPanel and toolsPanel:FindFirstChild("MediumPreset")
+		local largePreset = toolsPanel and toolsPanel:FindFirstChild("LargePreset")
 		
-		openButton.MainFrame.BottomFrame.Settings.MouseButton1Click:Connect(function()
-			if not SettingsWindow.Window.Closed then
-				SettingsWindow.Window:Hide()
-			else
-				SettingsWindow.Window:Show()
-			end		
-		end)
+		if settingsButton then
+			settingsButton.MouseButton1Click:Connect(function()
+				if not SettingsWindow.Window.Closed then
+					SettingsWindow.Window:Hide()
+				else
+					SettingsWindow.Window:Show()
+				end		
+			end)
+		end
 		
-		openButton.MainFrame.BottomFrame.Information.MouseButton1Click:Connect(function()
-			local duration = 1
-			local Infos = {
-				"Contributors >>",
-				"Toon (IY Dex and PRs)",
-				"Moon (Dex)",
-				"Cazan (3D Preview)",
-			}
-			
-			if isInfoCD then return end
-			isInfoCD = true
-			if not infoDexIntro then
-				infoDexIntro = Main.CreateIntro("Running")
-				--Main.AppControls ~= {}
-				coroutine.wrap(function()
-					while infoDexIntro and openButton.Parent ~= nil do
-						for i,text in Infos do
-							if not infoDexIntro or openButton.Parent == nil then break end
-							infoDexIntro.SetProgress(text,(1 / #Infos) * i)
-							task.wait(duration)
-						end
-					end
-				end)()
+		if informationButton then
+			informationButton.MouseButton1Click:Connect(function()
+				local duration = 1
+				local Infos = {
+					"Contributors >>",
+					"Toon (IY Dex and PRs)",
+					"Moon (Dex)",
+					"Cazan (3D Preview)",
+				}
 				
-				Lib.FastWait(1.5)
-				isInfoCD = false
-			else
-				coroutine.wrap(function()
-					infoDexIntro.Close()
-					infoDexIntro = nil
+				if isInfoCD then return end
+				isInfoCD = true
+				if not infoDexIntro then
+					infoDexIntro = Main.CreateIntro("Running")
+					--Main.AppControls ~= {}
+					coroutine.wrap(function()
+						while infoDexIntro and openButton.Parent ~= nil do
+							for i,text in Infos do
+								if not infoDexIntro or openButton.Parent == nil then break end
+								infoDexIntro.SetProgress(text,(1 / #Infos) * i)
+								task.wait(duration)
+							end
+						end
+					end)()
 					
 					Lib.FastWait(1.5)
 					isInfoCD = false
-				end)()
-			end
-		end)
+				else
+					coroutine.wrap(function()
+						infoDexIntro.Close()
+						infoDexIntro = nil
+						
+						Lib.FastWait(1.5)
+						isInfoCD = false
+					end)()
+				end
+			end)
+		end
 		
-		openButton.MainFrame.BottomFrame.ActionSearch.MouseButton1Click:Connect(function()
-			Main.ToggleActionPalette()
-		end)
+		if actionSearchButton then
+			actionSearchButton.MouseButton1Click:Connect(function()
+				Main.ToggleActionPalette()
+			end)
+		end
 		
-		openButton.MainFrame.BottomFrame.ResetLayout.MouseButton1Click:Connect(function()
-			Main.ResetMobileLayout()
-		end)
+		if resetLayoutButton then
+			resetLayoutButton.MouseButton1Click:Connect(function()
+				Main.ResetMobileLayout()
+			end)
+		end
 
-		openButton.MainFrame.DexHub.DexHubTabs.AppsTab.MouseButton1Click:Connect(function()
-			Main.SetDexHubTab("Apps")
-		end)
+		if appsTab then
+			appsTab.MouseButton1Click:Connect(function()
+				Main.SetDexHubTab("Apps")
+			end)
+		end
 
-		openButton.MainFrame.DexHub.DexHubTabs.ToolsTab.MouseButton1Click:Connect(function()
-			Main.SetDexHubTab("Tools")
-		end)
+		if toolsTab then
+			toolsTab.MouseButton1Click:Connect(function()
+				Main.SetDexHubTab("Tools")
+			end)
+		end
 
-		openButton.MainFrame.DexHub.DexHubTabs.StatusTab.MouseButton1Click:Connect(function()
-			Main.SetDexHubTab("Status")
-		end)
+		if statusTab then
+			statusTab.MouseButton1Click:Connect(function()
+				Main.SetDexHubTab("Status")
+			end)
+		end
 
-		openButton.MainFrame.DexHub.ToolsPanel.SearchTool.MouseButton1Click:Connect(function()
-			Main.ToggleActionPalette()
-		end)
+		if searchTool then
+			searchTool.MouseButton1Click:Connect(function()
+				Main.ToggleActionPalette()
+			end)
+		end
 
-		openButton.MainFrame.DexHub.ToolsPanel.ResetTool.MouseButton1Click:Connect(function()
-			Main.ResetMobileLayout()
-		end)
+		if resetTool then
+			resetTool.MouseButton1Click:Connect(function()
+				Main.ResetMobileLayout()
+			end)
+		end
 
-		openButton.MainFrame.DexHub.ToolsPanel.CompactPreset.MouseButton1Click:Connect(function()
-			Main.ResizeMobileWindowByPreset("Compact")
-		end)
+		if compactPreset then
+			compactPreset.MouseButton1Click:Connect(function()
+				Main.ResizeMobileWindowByPreset("Compact")
+			end)
+		end
 
-		openButton.MainFrame.DexHub.ToolsPanel.MediumPreset.MouseButton1Click:Connect(function()
-			Main.ResizeMobileWindowByPreset("Medium")
-		end)
+		if mediumPreset then
+			mediumPreset.MouseButton1Click:Connect(function()
+				Main.ResizeMobileWindowByPreset("Medium")
+			end)
+		end
 
-		openButton.MainFrame.DexHub.ToolsPanel.LargePreset.MouseButton1Click:Connect(function()
-			Main.ResizeMobileWindowByPreset("Large")
-		end)
+		if largePreset then
+			largePreset.MouseButton1Click:Connect(function()
+				Main.ResizeMobileWindowByPreset("Large")
+			end)
+		end
 		
 		gui.ActionPalette.PaletteSearch:GetPropertyChangedSignal("Text"):Connect(function()
 			Main.FilterActionPalette(gui.ActionPalette.PaletteSearch.Text)
