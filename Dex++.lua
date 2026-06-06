@@ -870,6 +870,7 @@ local function main()
 
 		Console.CommandLine.ScrollingFrame.TextBox.FocusLost:Connect(function(enterPressed)
 			if enterPressed and Console.CommandLine.ScrollingFrame.TextBox.Text ~= "" then
+				if not Main.GuardCapability("loadstring", Console.CommandLine.ScrollingFrame.TextBox) then return end
 				print("> "..Console.CommandLine.ScrollingFrame.TextBox.Text)
 				loadstring(Console.CommandLine.ScrollingFrame.TextBox.Text)()
 			end
@@ -7063,6 +7064,7 @@ local function main()
 			},mt)
 			obj.Gui = createGui(obj)
 			Main.RegisterMobileWindow(obj)
+			Main.AttachMobileWindowResize(obj)
 			return obj
 		end
 
@@ -13550,6 +13552,8 @@ local function main()
 		
 		FilenameTextBox.TextBox.Text = fileName
 		Button.MouseButton1Click:Connect(function()
+			if not Main.GuardCapability("saveinstance", LabelButton.Gui) then return end
+			if not Main.GuardCapability("writefile", LabelButton.Gui) then return end
 			local fileName = FilenameTextBox.TextBox.Text:gsub("{TIMESTAMP}", os.date("%d-%m-%Y_%H-%M-%S"))
 			window:SetTitle("Save Instance - Saving")
 			local s, result = pcall(env.saveinstance, game, fileName, SaveInstanceArgs)
@@ -13748,6 +13752,7 @@ local function main()
 		end
 
 		copy.MouseButton1Click:Connect(function()
+			if not Main.GuardCapability("setclipboard", copy) then return end
 			local source = codeFrame:GetText()
 			env.setclipboard(source)
 		end)
@@ -13768,6 +13773,7 @@ local function main()
 		end
 
 		save.MouseButton1Click:Connect(function()
+			if not Main.GuardCapability("writefile", save) then return end
 			local source = codeFrame:GetText()
 			local filename = "Place_"..game.PlaceId.."_Script_"..os.time()..".txt"
 
@@ -13815,6 +13821,7 @@ local function main()
 		end
 
 		execute.MouseButton1Click:Connect(function()
+			if not Main.GuardCapability("loadstring", execute) then return end
 			local source = codeFrame:GetText()
 			env.loadstring(source)()
 		end)
@@ -13833,7 +13840,11 @@ local function main()
 	
 	ScriptViewer.ViewScript = function(scr)
 		local oldtick = tick()
-		local s,source = pcall(env.decompile or function() end,scr)
+		local canDecompile = Main.GuardCapability("decompile", dumpbtn)
+		local s,source = false,nil
+		if canDecompile then
+			s,source = pcall(env.decompile or function() end,scr)
+		end
 
 		if not s or not source then
 			PreviousScr = nil
@@ -14500,27 +14511,30 @@ DefaultSettings = (function()
 		Mobile = {
 			_Recurse = true,
 			Mode = "Auto", -- Auto, On, Off
-			LayoutVersion = 3,
-			UIScale = 0.78,
+			LayoutVersion = 4,
+			UIScale = 0.74,
 			MinTapSize = 28,
-			RowHeight = 22,
+			RowHeight = 20,
 			DefaultPanelHeight = 0.44,
-			CompactPanelHeight = 0.30,
-			PanelWidthLandscape = 0.40,
-			PanelWidthPortrait = 0.76,
-			PanelHeightLandscape = 0.42,
-			PanelHeightPortrait = 0.36,
+			CompactPanelHeight = 0.28,
+			PanelWidthLandscape = 0.34,
+			PanelWidthPortrait = 0.68,
+			PanelHeightLandscape = 0.36,
+			PanelHeightPortrait = 0.30,
 			PanelMinWidth = 170,
 			PanelMinHeight = 120,
-			MaxPanelWidth = 560,
-			MaxPanelHeight = 300,
+			MaxPanelWidth = 480,
+			MaxPanelHeight = 260,
 			MenuMaxWidth = 190,
 			MenuMaxHeight = 190,
 			PaletteMaxWidth = 220,
 			PaletteMaxHeight = 260,
 			PaletteHeight = 0.36,
+			ResizeEnabled = true,
+			ResizeHandleSize = 22,
+			WindowOverrides = {},
 			FloatingLauncher = true,
-			LauncherSize = 28,
+			LauncherSize = 26,
 			LauncherPosition = { X = 0.88, Y = 0.72 },
 			SinglePanel = true,
 			BottomNavigation = false,
@@ -14531,6 +14545,7 @@ DefaultSettings = (function()
 			SafeMode = true,
 			AutoRunAdonisBypass = false,
 			RemoteSpyAutoHook = false,
+			RemoteSpyBatchSize = 80,
 			ModelViewerRenderWhenHidden = false,
 			BatchExplorerUpdates = true,
 			SearchDebounce = 0.12
@@ -14624,6 +14639,95 @@ Main = (function()
 	Main.MobileWindows = {}
 	Main.MobileActiveWindow = nil
 	Main.MobileLayoutDirty = false
+	Main.PluginStatus = {}
+	Main.LoadedPluginNames = {}
+
+	Main.CapabilityChecks = {
+		loadstring = function() return env.loadstring ~= nil end,
+		saveinstance = function() return env.saveinstance ~= nil end,
+		writefile = function() return env.writefile ~= nil end,
+		readfile = function() return env.readfile ~= nil end,
+		listfiles = function() return env.listfiles ~= nil end,
+		makefolder = function() return env.makefolder ~= nil end,
+		isfile = function() return env.isfile ~= nil end,
+		hookfunction = function() return env.hookfunction ~= nil end,
+		hookmetamethod = function() return env.hookmetamethod ~= nil end,
+		getnamecallmethod = function() return env.getnamecallmethod ~= nil or getnamecallmethod ~= nil end,
+		getnilinstances = function() return env.getnilinstances ~= nil end,
+		getscriptbytecode = function() return env.getscriptbytecode ~= nil end,
+		decompile = function() return env.decompile ~= nil or env.getscriptbytecode ~= nil end,
+		request = function() return env.request ~= nil end,
+		setclipboard = function() return env.setclipboard ~= nil end,
+		filesystem = function() return env.readfile ~= nil and env.writefile ~= nil and env.listfiles ~= nil and env.makefolder ~= nil and env.isfile ~= nil end,
+	}
+
+	Main.AppCapabilityMap = {
+		["Remote Spy"] = { "hookmetamethod", "getnamecallmethod", "getnilinstances" },
+		["Save Instance"] = { "saveinstance", "writefile" },
+		["Notepad"] = { "decompile", "getscriptbytecode", "request", "setclipboard", "writefile" },
+		["Explorer"] = { "hookfunction", "hookmetamethod", "setclipboard" },
+		["Console"] = { "loadstring" },
+		["Plugins"] = { "readfile", "writefile", "listfiles", "makefolder", "isfile" },
+	}
+
+	Main.CapabilityOrder = {
+		"filesystem", "readfile", "writefile", "listfiles", "makefolder", "isfile",
+		"hookfunction", "hookmetamethod", "getnamecallmethod", "getnilinstances",
+		"saveinstance", "decompile", "getscriptbytecode", "request", "setclipboard", "loadstring"
+	}
+
+	Main.IsCapabilityAvailable = function(capabilityName)
+		local check = Main.CapabilityChecks[capabilityName]
+		if not check then return false, "unknown" end
+		local ok, result = pcall(check)
+		if not ok then return false, tostring(result) end
+		return result == true, result == true and "ready" or "unsupported"
+	end
+
+	Main.DescribeCapabilityStatus = function(capabilityName)
+		local ok, reason = Main.IsCapabilityAvailable(capabilityName)
+		return ok and "ready" or ("Missing capability: "..tostring(capabilityName).." ("..tostring(reason)..")")
+	end
+
+	Main.GuardCapability = function(capabilityName, statusLabel)
+		local ok = Main.IsCapabilityAvailable(capabilityName)
+		if ok then return true end
+		local text = Main.DescribeCapabilityStatus(capabilityName)
+		if statusLabel and statusLabel.Text ~= nil then statusLabel.Text = text end
+		warn(text)
+		return false
+	end
+
+	Main.GetCapabilityReport = function()
+		local report = {}
+		for _, capabilityName in ipairs(Main.CapabilityOrder) do
+			local ok, reason = Main.IsCapabilityAvailable(capabilityName)
+			report[#report + 1] = {
+				Name = capabilityName,
+				Ready = ok,
+				Status = ok and "ready" or tostring(reason),
+			}
+		end
+		return report
+	end
+
+	Main.GetAppCapabilityStatus = function(appName)
+		local caps = Main.AppCapabilityMap[appName] or {}
+		local missing = {}
+		for _, capabilityName in ipairs(caps) do
+			local ok = Main.IsCapabilityAvailable(capabilityName)
+			if not ok then missing[#missing + 1] = capabilityName end
+		end
+		return #missing == 0 and "ready" or ("missing: "..table.concat(missing, ", "))
+	end
+
+	Main.BatchIterate = function(items, batchSize, callback)
+		batchSize = math.max(1, tonumber(batchSize) or 80)
+		for i, item in ipairs(items or {}) do
+			callback(item, i)
+			if i % batchSize == 0 then task.wait() end
+		end
+	end
 	
 	Main.IsMobile = function()
 		local mobileSettings = Settings.Mobile or {}
@@ -14645,11 +14749,11 @@ Main = (function()
 	
 	Main.GetMobileMetrics = function()
 		local mobileSettings = Settings.Mobile or {}
-		local scale = math.clamp(tonumber(mobileSettings.UIScale) or 0.78, 0.65, 1.2)
+		local scale = math.clamp(tonumber(mobileSettings.UIScale) or 0.74, 0.65, 1.2)
 		local tap = math.floor(math.clamp(tonumber(mobileSettings.MinTapSize) or 28, 24, 44))
-		local rowHeight = math.floor(math.clamp(tonumber(mobileSettings.RowHeight) or 22, 18, 36))
+		local rowHeight = math.floor(math.clamp(tonumber(mobileSettings.RowHeight) or 20, 18, 36))
 		local navHeight = mobileSettings.BottomNavigation == false and 0 or math.floor(math.max(34, tap + 8))
-		local launcherSize = math.floor(math.clamp(tonumber(mobileSettings.LauncherSize) or 28, 24, 42))
+		local launcherSize = math.floor(math.clamp(tonumber(mobileSettings.LauncherSize) or 26, 22, 42))
 		local launcherPosition = mobileSettings.LauncherPosition or {}
 		return {
 			Scale = scale,
@@ -14659,16 +14763,17 @@ Main = (function()
 			BottomNavHeight = navHeight,
 			Padding = math.max(5, math.floor(6 * scale)),
 			ResizeHandle = math.floor(8 * scale),
+			ResizeHandleSize = math.floor(math.clamp(tonumber(mobileSettings.ResizeHandleSize) or 22, 16, 32)),
 			DefaultPanelHeight = math.clamp(tonumber(mobileSettings.DefaultPanelHeight) or 0.44, 0.30, 0.62),
-			CompactPanelHeight = math.clamp(tonumber(mobileSettings.CompactPanelHeight) or 0.30, 0.22, 0.48),
-			PanelWidthLandscape = math.clamp(tonumber(mobileSettings.PanelWidthLandscape) or 0.40, 0.30, 0.62),
-			PanelWidthPortrait = math.clamp(tonumber(mobileSettings.PanelWidthPortrait) or 0.76, 0.58, 0.90),
-			PanelHeightLandscape = math.clamp(tonumber(mobileSettings.PanelHeightLandscape) or 0.42, 0.26, 0.60),
-			PanelHeightPortrait = math.clamp(tonumber(mobileSettings.PanelHeightPortrait) or 0.36, 0.28, 0.58),
+			CompactPanelHeight = math.clamp(tonumber(mobileSettings.CompactPanelHeight) or 0.28, 0.22, 0.48),
+			PanelWidthLandscape = math.clamp(tonumber(mobileSettings.PanelWidthLandscape) or 0.34, 0.28, 0.62),
+			PanelWidthPortrait = math.clamp(tonumber(mobileSettings.PanelWidthPortrait) or 0.68, 0.52, 0.90),
+			PanelHeightLandscape = math.clamp(tonumber(mobileSettings.PanelHeightLandscape) or 0.36, 0.24, 0.60),
+			PanelHeightPortrait = math.clamp(tonumber(mobileSettings.PanelHeightPortrait) or 0.30, 0.24, 0.58),
 			PanelMinWidth = math.floor(math.clamp(tonumber(mobileSettings.PanelMinWidth) or 170, 140, 260)),
 			PanelMinHeight = math.floor(math.clamp(tonumber(mobileSettings.PanelMinHeight) or 120, 96, 220)),
-			MaxPanelWidth = math.floor(math.clamp(tonumber(mobileSettings.MaxPanelWidth) or 560, 220, 720)),
-			MaxPanelHeight = math.floor(math.clamp(tonumber(mobileSettings.MaxPanelHeight) or 300, 150, 460)),
+			MaxPanelWidth = math.floor(math.clamp(tonumber(mobileSettings.MaxPanelWidth) or 480, 220, 720)),
+			MaxPanelHeight = math.floor(math.clamp(tonumber(mobileSettings.MaxPanelHeight) or 260, 150, 460)),
 			MenuMaxWidth = math.floor(math.clamp(tonumber(mobileSettings.MenuMaxWidth) or 190, 140, 280)),
 			MenuMaxHeight = math.floor(math.clamp(tonumber(mobileSettings.MenuMaxHeight) or 190, 110, 320)),
 			PaletteMaxWidth = math.floor(math.clamp(tonumber(mobileSettings.PaletteMaxWidth) or 220, 180, 320)),
@@ -14713,17 +14818,110 @@ Main = (function()
 		local metrics = Main.GetMobileMetrics()
 		local layoutBudget = Main.GetMobileLayoutBudget(viewport, metrics)
 		local margin = metrics.Padding
-		window.SizeX = layoutBudget.PanelWidth
-		window.SizeY = layoutBudget.PanelHeight
-		local posX = margin
-		local posY = margin
+		Main.ApplyWindowOverride(window)
+		local targetWidth = window.SizeX or layoutBudget.PanelWidth
+		local targetHeight = window.SizeY or layoutBudget.PanelHeight
+		window.SizeX = math.clamp(targetWidth, metrics.PanelMinWidth, layoutBudget.PanelWidth)
+		window.SizeY = math.clamp(targetHeight, metrics.PanelMinHeight, layoutBudget.PanelHeight)
+		local posX = math.clamp(window.PosX or margin, margin, math.max(margin, viewport.X - window.SizeX - margin))
+		local posY = math.clamp(window.PosY or margin, margin, math.max(margin, viewport.Y - window.SizeY - margin))
 		window.GuiElems.Main.Position = UDim2.new(0, posX, 0, posY)
 		window.GuiElems.Main.Size = UDim2.new(0, window.SizeX, 0, window.Minimized and metrics.TitleBarHeight or window.SizeY)
+	end
+
+	Main.GetMobileWindowKey = function(window)
+		if not window then return "Unknown" end
+		local title = window.GuiElems and window.GuiElems.Title and window.GuiElems.Title.Text
+		return tostring(title or window.MobileWindowKey or "Window"):gsub("[^%w%s_%-]", ""):gsub("%s+", "_")
+	end
+
+	Main.ApplyWindowOverride = function(window)
+		if not Main.IsMobile() or not window then return end
+		local mobileSettings = Settings.Mobile or {}
+		local overrides = mobileSettings.WindowOverrides
+		if type(overrides) ~= "table" then return end
+		local override = overrides[Main.GetMobileWindowKey(window)]
+		if type(override) ~= "table" then return end
+		window.SizeX = tonumber(override.SizeX) or window.SizeX
+		window.SizeY = tonumber(override.SizeY) or window.SizeY
+		window.PosX = tonumber(override.PosX) or window.PosX
+		window.PosY = tonumber(override.PosY) or window.PosY
+	end
+
+	Main.SaveWindowOverride = function(window)
+		if not Main.IsMobile() or not window then return end
+		Settings.Mobile = Settings.Mobile or {}
+		Settings.Mobile.WindowOverrides = Settings.Mobile.WindowOverrides or {}
+		local windowKey = Main.GetMobileWindowKey(window)
+		Settings.Mobile.WindowOverrides[windowKey] = {
+			SizeX = window.SizeX,
+			SizeY = window.SizeY,
+			PosX = window.PosX,
+			PosY = window.PosY,
+		}
+	end
+
+	Main.AttachMobileWindowResize = function(window)
+		if not Main.IsMobile() or not window or window.MobileResizeAttached then return end
+		if not Settings.Mobile or Settings.Mobile.ResizeEnabled == false then return end
+		local mainFrame = window.GuiElems and window.GuiElems.Main
+		if not mainFrame then return end
+		window.MobileResizeAttached = true
+		local handle = Instance.new("TextButton")
+		handle.Name = "MobileResizeHandle"
+		handle.AutoButtonColor = false
+		handle.BackgroundColor3 = Settings.Theme.AccentSoft
+		handle.BackgroundTransparency = 0.2
+		handle.BorderSizePixel = 0
+		handle.Text = ""
+		handle.AnchorPoint = Vector2.new(1,1)
+		handle.Parent = mainFrame
+		local corner = Instance.new("UICorner", handle)
+		corner.CornerRadius = UDim.new(1,0)
+		Lib.ApplyModernStroke(handle, Settings.Theme.AccentGlow, 0.35)
+		local resizing = false
+		local moveCon, endCon, startPos, startSize
+		local function refreshHandle()
+			local metrics = Main.GetMobileMetrics()
+			handle.Size = UDim2.new(0, metrics.ResizeHandleSize, 0, metrics.ResizeHandleSize)
+			handle.Position = UDim2.new(1, -2, 1, -2)
+			handle.Visible = Main.IsMobile() and Settings.Mobile.ResizeEnabled ~= false and not window.Minimized
+		end
+		refreshHandle()
+		window.OnMinimize:Connect(refreshHandle)
+		window.OnRestore:Connect(refreshHandle)
+		handle.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+			resizing = true
+			startPos = input.Position
+			startSize = Vector2.new(window.SizeX, window.SizeY)
+			if moveCon then moveCon:Disconnect() end
+			if endCon then endCon:Disconnect() end
+			moveCon = service.UserInputService.InputChanged:Connect(function(moveInput)
+				if not resizing or (moveInput.UserInputType ~= input.UserInputType and moveInput.UserInputType ~= Enum.UserInputType.MouseMovement) then return end
+				local viewport = Main.GetViewportSize()
+				local metrics = Main.GetMobileMetrics()
+				local layoutBudget = Main.GetMobileLayoutBudget(viewport, metrics)
+				local delta = moveInput.Position - startPos
+				window.SizeX = math.clamp(startSize.X + delta.X, metrics.PanelMinWidth, layoutBudget.PanelWidth)
+				window.SizeY = math.clamp(startSize.Y + delta.Y, metrics.PanelMinHeight, layoutBudget.PanelHeight)
+				mainFrame.Size = UDim2.new(0, window.SizeX, 0, window.SizeY)
+			end)
+			endCon = service.UserInputService.InputEnded:Connect(function(endInput)
+				if endInput.UserInputType ~= input.UserInputType and endInput.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+				resizing = false
+				if moveCon then moveCon:Disconnect() moveCon = nil end
+				if endCon then endCon:Disconnect() endCon = nil end
+				Main.SaveWindowOverride(window)
+				Main.ClampWindowToViewport(window)
+			end)
+		end)
 	end
 	
 	Main.RegisterMobileWindow = function(window)
 		if not window or table.find(Main.MobileWindows, window) then return end
 		table.insert(Main.MobileWindows, window)
+		Main.AttachMobileWindowResize(window)
 	end
 	
 	Main.ShowMobileWindow = function(window)
@@ -14742,12 +14940,49 @@ Main = (function()
 	
 	Main.ResetMobileLayout = function()
 		if not Main.IsMobile() then return end
+		if Settings.Mobile then Settings.Mobile.WindowOverrides = {} end
+		local viewport = Main.GetViewportSize()
+		local metrics = Main.GetMobileMetrics()
+		local layoutBudget = Main.GetMobileLayoutBudget(viewport, metrics)
+		for _, window in pairs(Main.MobileWindows) do
+			window.SizeX = layoutBudget.PanelWidth
+			window.SizeY = layoutBudget.PanelHeight
+			window.PosX = metrics.Padding
+			window.PosY = metrics.Padding
+			Main.ClampWindowToViewport(window)
+		end
+		if Main.MobileActiveWindow and Main.MobileActiveWindow.Show then
+			Main.MobileActiveWindow:Show()
+		end
+	end
+
+	Main.ReflowMobileLayout = function()
+		if not Main.IsMobile() then return end
 		for _, window in pairs(Main.MobileWindows) do
 			Main.ClampWindowToViewport(window)
 		end
 		if Main.MobileActiveWindow and Main.MobileActiveWindow.Show then
 			Main.MobileActiveWindow:Show()
 		end
+	end
+
+	Main.ResizeMobileWindowByPreset = function(preset)
+		if not Main.IsMobile() then return end
+		local window = Main.MobileActiveWindow
+		if not window then return end
+		local viewport = Main.GetViewportSize()
+		local metrics = Main.GetMobileMetrics()
+		local layoutBudget = Main.GetMobileLayoutBudget(viewport, metrics)
+		local presets = {
+			Compact = 0.72,
+			Medium = 0.88,
+			Large = 1,
+		}
+		local scale = presets[preset] or presets.Medium
+		window.SizeX = math.clamp(math.floor(layoutBudget.PanelWidth * scale), metrics.PanelMinWidth, layoutBudget.PanelWidth)
+		window.SizeY = math.clamp(math.floor(layoutBudget.PanelHeight * scale), metrics.PanelMinHeight, layoutBudget.PanelHeight)
+		Main.SaveWindowOverride(window)
+		Main.ClampWindowToViewport(window)
 	end
 
 	Main.WatchMobileViewport = function()
@@ -14761,7 +14996,7 @@ Main = (function()
 				pending = false
 				if not Main.MainGui or not Main.IsMobile() then return end
 				Main.ApplyMobileMainGui()
-				Main.ResetMobileLayout()
+				Main.ReflowMobileLayout()
 			end)
 		end
 		local function watchCamera(camera)
@@ -14991,8 +15226,8 @@ Main = (function()
 	
 	Main.LoadPluginFile = function(pluginDir)
 		if env.readfile then
-			if isfile(pluginDir) then
-				local preloadedPlugin = loadfile and loadfile(pluginDir) or loadstring(env.readfile(pluginDir))
+			if env.isfile and env.isfile(pluginDir) then
+				local preloadedPlugin = env.loadfile and env.loadfile(pluginDir) or loadstring(env.readfile(pluginDir))
 				local loadedPlugin = preloadedPlugin()
 				
 				local control = loadedPlugin
@@ -15007,6 +15242,50 @@ Main = (function()
 				return moduleData
 			else
 				Main.Error("CANNOT FIND FILE MODULE "..pluginDir)
+			end
+		end
+	end
+
+	Main.LoadBundledPluginSource = function(pluginName, pluginSource)
+		if not pluginSource or pluginSource == "" then Main.Error("Missing bundled plugin source: "..tostring(pluginName)) end
+		local pluginChunk, chunkErr = loadstring(pluginSource, pluginName)
+		if not pluginChunk then Main.Error("Failed loading bundled plugin "..tostring(pluginName)..": "..tostring(chunkErr)) end
+		local control = pluginChunk()
+		control.InitDeps(Main.GetInitDeps())
+		local moduleData = control.Main()
+		Apps[pluginName] = moduleData
+		Main.AppControls[pluginName] = control
+		moduleData.PluginData = moduleData.PluginData or control.PluginData or {}
+		moduleData.PluginData.Name = moduleData.PluginData.Name or pluginName
+		moduleData.PluginData.FriendlyName = moduleData.PluginData.FriendlyName or pluginName
+		local appTable = {
+			Explorer = Explorer,
+			Properties = Properties,
+			ScriptViewer = ScriptViewer,
+			Console = Console,
+			SaveInstance = SaveInstance,
+			ModelViewer = ModelViewer,
+			SettingsWindow = SettingsWindow,
+		}
+		if control.InitAfterMain then control.InitAfterMain(appTable) end
+		return moduleData
+	end
+
+	Main.LoadBundledPlugins = function(intro)
+		local bundled = Main.BundledPlugins or { RemoteSpy = Main.BundledRemoteSpyPluginSource }
+		for pluginName, pluginSource in pairs(bundled) do
+			if not Main.LoadedPluginNames[pluginName] then
+				local ok, err = Main.RunInitStep(intro, "Bundled Plugin: "..pluginName, 0.88, function()
+					local moduleData = Main.LoadBundledPluginSource(pluginName, pluginSource)
+					intro.SetProgress("Initializing Plugin: "..(moduleData.PluginData.FriendlyName or pluginName),0.88)
+					moduleData.Init()
+					table.insert(Main.Plugins, moduleData)
+					Main.LoadedPluginNames[pluginName] = true
+					Main.PluginStatus[pluginName] = "ready"
+				end)
+				if not ok then
+					Main.PluginStatus[pluginName] = "failed: "..tostring(err)
+				end
 			end
 		end
 	end
@@ -15114,6 +15393,7 @@ Main = (function()
 		-- hooks
 		env.hookfunction = hookfunction
 		env.hookmetamethod = hookmetamethod
+		env.getnamecallmethod = getnamecallmethod
 
 		-- other
 		env.getscriptbytecode = getscriptbytecode
@@ -15373,29 +15653,32 @@ Main = (function()
 	Main.ApplyMobileLayoutMigration = function()
 		Settings.Mobile = Settings.Mobile or {}
 		local mobileSettings = Settings.Mobile
-		if mobileSettings.LayoutVersion ~= 3 then
-			mobileSettings.UIScale = 0.78
+		if mobileSettings.LayoutVersion ~= 4 then
+			mobileSettings.UIScale = 0.74
 			mobileSettings.MinTapSize = 28
-			mobileSettings.RowHeight = 22
+			mobileSettings.RowHeight = 20
 			mobileSettings.DefaultPanelHeight = 0.44
-			mobileSettings.CompactPanelHeight = 0.30
-			mobileSettings.PanelWidthLandscape = 0.40
-			mobileSettings.PanelWidthPortrait = 0.76
-			mobileSettings.PanelHeightLandscape = 0.42
-			mobileSettings.PanelHeightPortrait = 0.36
+			mobileSettings.CompactPanelHeight = 0.28
+			mobileSettings.PanelWidthLandscape = 0.34
+			mobileSettings.PanelWidthPortrait = 0.68
+			mobileSettings.PanelHeightLandscape = 0.36
+			mobileSettings.PanelHeightPortrait = 0.30
 			mobileSettings.PanelMinWidth = 170
 			mobileSettings.PanelMinHeight = 120
-			mobileSettings.MaxPanelWidth = 560
-			mobileSettings.MaxPanelHeight = 300
+			mobileSettings.MaxPanelWidth = 480
+			mobileSettings.MaxPanelHeight = 260
 			mobileSettings.MenuMaxWidth = 190
 			mobileSettings.MenuMaxHeight = 190
 			mobileSettings.PaletteMaxWidth = 220
 			mobileSettings.PaletteMaxHeight = 260
 			mobileSettings.PaletteHeight = 0.36
-			mobileSettings.LauncherSize = 28
+			mobileSettings.ResizeEnabled = true
+			mobileSettings.ResizeHandleSize = 22
+			mobileSettings.WindowOverrides = {}
+			mobileSettings.LauncherSize = 26
 			mobileSettings.BottomNavigation = false
 			mobileSettings.FloatingLauncher = true
-			mobileSettings.LayoutVersion = 3
+			mobileSettings.LayoutVersion = 4
 		end
 	end
 
@@ -15889,6 +16172,95 @@ Main = (function()
 		return {SetProgress = setProgress, Close = close, Object = gui}
 	end
 
+	Main.CreateDiagnosticsWindow = function()
+		if Main.DiagnosticsWindow then return Main.DiagnosticsWindow end
+		local window = Lib.Window.new()
+		window:SetTitle("Diagnostics")
+		window:Resize(300,260)
+		Main.DiagnosticsWindow = window
+		local list = Instance.new("ScrollingFrame")
+		list.Name = "DiagnosticsList"
+		list.BackgroundTransparency = 1
+		list.BorderSizePixel = 0
+		list.CanvasSize = UDim2.new(0,0,0,0)
+		list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		list.ScrollBarThickness = 4
+		list.Size = UDim2.new(1,-8,1,-8)
+		list.Position = UDim2.new(0,4,0,4)
+		list.Parent = window.GuiElems.Content
+		local layout = Instance.new("UIListLayout", list)
+		layout.Padding = UDim.new(0,2)
+		layout.SortOrder = Enum.SortOrder.LayoutOrder
+		local function addRow(text, color)
+			local row = Instance.new("TextLabel")
+			row.BackgroundColor3 = Settings.Theme.Button
+			row.BackgroundTransparency = 0.12
+			row.BorderSizePixel = 0
+			row.Font = Enum.Font.Code
+			row.TextSize = Main.IsMobile() and 11 or 13
+			row.TextColor3 = color or Settings.Theme.Text
+			row.TextXAlignment = Enum.TextXAlignment.Left
+			row.TextTruncate = Enum.TextTruncate.AtEnd
+			row.Size = UDim2.new(1,0,0,Main.GetMobileMetrics().RowHeight)
+			row.Parent = list
+			local padding = Instance.new("UIPadding", row)
+			padding.PaddingLeft = UDim.new(0,6)
+			row.Text = text
+			Lib.ApplyModernFrameStyle(row, 4, Settings.Theme.Outline2, 0.74)
+			return row
+		end
+		local function refresh()
+			for _, child in pairs(list:GetChildren()) do
+				if child:IsA("TextLabel") then child:Destroy() end
+			end
+			addRow("Apps", Settings.Theme.AccentGlow)
+			for _, name in ipairs({"Remote Spy","Save Instance","Notepad","Explorer","Console","Plugins"}) do
+				local status = Main.GetAppCapabilityStatus(name)
+				addRow(name..": "..status, status == "ready" and Settings.Theme.Text or Settings.Theme.Important)
+			end
+			addRow("Capabilities", Settings.Theme.AccentGlow)
+			for _, item in ipairs(Main.GetCapabilityReport()) do
+				addRow(item.Name..": "..item.Status, item.Ready and Settings.Theme.Text or Settings.Theme.Important)
+			end
+			list.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 8)
+		end
+		Main.RefreshDiagnosticsWindow = refresh
+		window.OnActivate:Connect(refresh)
+		refresh()
+		return window
+	end
+
+	Main.RefreshDiagnosticsSummary = function()
+		if not Main.MainGui then return end
+		local hub = Main.MainGui.OpenButton.MainFrame:FindFirstChild("DexHub")
+		local statusPanel = hub and hub:FindFirstChild("StatusPanel")
+		local label = statusPanel and statusPanel:FindFirstChild("StatusSummary")
+		if not label then return end
+		local lines = {}
+		for _, name in ipairs({"Remote Spy","Save Instance","Notepad","Console","Plugins"}) do
+			lines[#lines + 1] = name..": "..Main.GetAppCapabilityStatus(name)
+		end
+		label.Text = table.concat(lines, "\n")
+	end
+
+	Main.SetDexHubTab = function(tabName)
+		if not Main.MainGui then return end
+		local frame = Main.MainGui.OpenButton.MainFrame
+		local hub = frame:FindFirstChild("DexHub")
+		if not hub then return end
+		local toolsPanel = hub:FindFirstChild("ToolsPanel")
+		local statusPanel = hub:FindFirstChild("StatusPanel")
+		Main.AppsFrame.Visible = tabName == "Apps"
+		if toolsPanel then toolsPanel.Visible = tabName == "Tools" end
+		if statusPanel then statusPanel.Visible = tabName == "Status" end
+		for _, tab in pairs(hub.DexHubTabs:GetChildren()) do
+			if tab:IsA("TextButton") then
+				tab.BackgroundColor3 = tab.Name == tabName.."Tab" and Settings.Theme.AccentSoft or Settings.Theme.Button
+			end
+		end
+		if tabName == "Status" then Main.RefreshDiagnosticsSummary() end
+	end
+
 	Main.CreateApp = function(data)
 		if Main.MenuApps[data.Name] then return end -- TODO: Handle conflict
 		local control = {}
@@ -16076,6 +16448,7 @@ Main = (function()
 		if val then Main.MainGui.OpenButton.MainFrame.Visible = true end
 		local menuSize = Main.GetMobileMenuSize()
 		if Main.IsMobile() then Main.PositionMobileMainFrame(menuSize) end
+		if val then Main.RefreshDiagnosticsSummary() end
 		Main.MainGui.OpenButton.MainFrame:TweenSize(val and Main.GetMobileMenuSize() or UDim2.new(0,0,0,0),Enum.EasingDirection.Out,Enum.EasingStyle.Quad,0.2,true)
 		if Main.IsMobile() and not val then
 			Main.MainGui.OpenButton.MainFrame.Size = UDim2.new(0,0,0,0)
@@ -16168,12 +16541,19 @@ Main = (function()
 		openButton.AnchorPoint = Vector2.new(0,0)
 		openButton.Size = UDim2.new(0,metrics.LauncherSize,0,metrics.LauncherSize)
 		openButton.Text = "D"
-		openButton.TextSize = 11
+		openButton.TextSize = 10
 		openButton.TextTransparency = 0
 		openButton.UICorner.CornerRadius = UDim.new(1,0)
 		Main.ClampMobileLauncher(openButton)
 		Main.AttachMobileLauncherDrag(openButton)
 		openButton.MainFrame.AnchorPoint = Vector2.new(0,0)
+		openButton.MainFrame.DexHub.Visible = true
+		openButton.MainFrame.DexHub.Size = UDim2.new(1,0,1,0)
+		openButton.MainFrame.DexHub.DexHubTabs.Size = UDim2.new(1,-12,0,math.max(20, metrics.RowHeight + 2))
+		openButton.MainFrame.DexHub.ToolsPanel.Position = UDim2.new(0,6,0,metrics.RowHeight + 32)
+		openButton.MainFrame.DexHub.ToolsPanel.Size = UDim2.new(1,-12,1,-metrics.MinTapSize-metrics.RowHeight-42)
+		openButton.MainFrame.DexHub.StatusPanel.Position = UDim2.new(0,6,0,metrics.RowHeight + 32)
+		openButton.MainFrame.DexHub.StatusPanel.Size = UDim2.new(1,-12,1,-metrics.MinTapSize-metrics.RowHeight-42)
 		openButton.MainFrame.BottomFrame.Size = UDim2.new(1,0,0,metrics.MinTapSize)
 		openButton.MainFrame.BottomFrame.Position = UDim2.new(0,0,1,-metrics.MinTapSize)
 		openButton.MainFrame.BottomFrame.Settings.Size = UDim2.new(0,metrics.MinTapSize,1,0)
@@ -16184,19 +16564,19 @@ Main = (function()
 		openButton.MainFrame.BottomFrame.ActionSearch.Position = UDim2.new(0,0,0,0)
 		openButton.MainFrame.BottomFrame.ResetLayout.Size = UDim2.new(0,metrics.MinTapSize,1,0)
 		openButton.MainFrame.BottomFrame.ResetLayout.Position = UDim2.new(0,metrics.MinTapSize,0,0)
-		Main.AppsFrame.Size = UDim2.new(1,-8,1,-metrics.MinTapSize-6)
-		Main.AppsFrame.Position = UDim2.new(0.5,0,0,0)
+		Main.AppsFrame.Size = UDim2.new(1,-8,1,-metrics.MinTapSize-metrics.RowHeight-42)
+		Main.AppsFrame.Position = UDim2.new(0.5,0,0,metrics.RowHeight + 32)
 		Main.AppsContainer.Position = UDim2.new(0,5,0,5)
 		Main.AppsContainer.Size = UDim2.new(1,-10,0,2)
-		Main.AppsContainerGrid.CellSize = UDim2.new(0,math.max(46, metrics.RowHeight + 16),0,metrics.RowHeight + 16)
+		Main.AppsContainerGrid.CellSize = UDim2.new(0,math.max(42, metrics.RowHeight + 14),0,metrics.RowHeight + 14)
 		for _, control in ipairs(Main.AppSequence) do
 			if control.Button then
 				control.Button.Size = UDim2.new(1,0,0,metrics.RowHeight + 12)
-				control.Button.Icon.Size = UDim2.new(0,18,0,18)
-				control.Button.Icon.Position = UDim2.new(0.5,-9,0,2)
-				control.Button.AppName.Position = UDim2.new(0,2,0,22)
-				control.Button.AppName.Size = UDim2.new(1,-4,1,-24)
-				control.Button.AppName.TextSize = 10
+				control.Button.Icon.Size = UDim2.new(0,16,0,16)
+				control.Button.Icon.Position = UDim2.new(0.5,-8,0,2)
+				control.Button.AppName.Position = UDim2.new(0,2,0,20)
+				control.Button.AppName.Size = UDim2.new(1,-4,1,-22)
+				control.Button.AppName.TextSize = 9
 			end
 		end
 		local paletteWidth = layoutBudget.PaletteWidth
@@ -16204,7 +16584,9 @@ Main = (function()
 		gui.ActionPalette.AnchorPoint = Vector2.new(0.5,0.5)
 		gui.ActionPalette.Position = UDim2.new(0.5,0,0.5,0)
 		gui.ActionPalette.Size = UDim2.new(0,paletteWidth,0,paletteHeight)
-		Main.ResetMobileLayout()
+		Main.SetDexHubTab("Apps")
+		Main.RefreshDiagnosticsSummary()
+		Main.ReflowMobileLayout()
 	end
 
 	Main.CreateMainGui = function()
@@ -16238,6 +16620,20 @@ Main = (function()
 			{27,"UIListLayout",{Parent={26},SortOrder=2,Padding=UDim.new(0,6),}},
 			{28,"TextButton",{BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,Font=3,Name="ActionSearch",Parent={6},Position=UDim2.new(0,0,0,0),Size=UDim2.new(0,24,1,0),Text="?",TextColor3=Color3.new(1,1,1),TextSize=16,}},
 			{29,"TextButton",{BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,Font=3,Name="ResetLayout",Parent={6},Position=UDim2.new(0,24,0,0),Size=UDim2.new(0,24,1,0),Text="R",TextColor3=Color3.new(1,1,1),TextSize=16,}},
+			{30,"Frame",{BackgroundTransparency=1,Name="DexHub",Parent={4},Size=UDim2.new(1,0,1,0),Visible=false,ZIndex=5,}},
+			{31,"TextLabel",{BackgroundTransparency=1,Font=4,Name="DexHubTitle",Parent={30},Position=UDim2.new(0,8,0,3),Size=UDim2.new(1,-16,0,18),Text="Dex Hub",TextColor3=Color3.new(1,1,1),TextSize=13,TextXAlignment=0,ZIndex=6,}},
+			{32,"Frame",{BackgroundTransparency=1,Name="DexHubTabs",Parent={30},Position=UDim2.new(0,6,0,24),Size=UDim2.new(1,-12,0,22),ZIndex=6,}},
+			{33,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.2352941185236,0.2352941185236,0.2352941185236),BorderSizePixel=0,Font=3,Name="AppsTab",Parent={32},Size=UDim2.new(0.333, -2,1,0),Text="Apps",TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=7,}},
+			{34,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.2352941185236,0.2352941185236,0.2352941185236),BorderSizePixel=0,Font=3,Name="ToolsTab",Parent={32},Position=UDim2.new(0.333,2,0,0),Size=UDim2.new(0.333, -2,1,0),Text="Tools",TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=7,}},
+			{35,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.2352941185236,0.2352941185236,0.2352941185236),BorderSizePixel=0,Font=3,Name="StatusTab",Parent={32},Position=UDim2.new(0.666,4,0,0),Size=UDim2.new(0.334, -4,1,0),Text="Status",TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=7,}},
+			{36,"Frame",{BackgroundTransparency=1,Name="ToolsPanel",Parent={30},Position=UDim2.new(0,6,0,52),Size=UDim2.new(1,-12,1,-84),Visible=false,ZIndex=6,}},
+			{37,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.2352941185236,0.2352941185236,0.2352941185236),BorderSizePixel=0,Font=3,Name="SearchTool",Parent={36},Size=UDim2.new(1,0,0,22),Text="Search / Actions",TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=7,}},
+			{38,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.2352941185236,0.2352941185236,0.2352941185236),BorderSizePixel=0,Font=3,Name="ResetTool",Parent={36},Position=UDim2.new(0,0,0,26),Size=UDim2.new(1,0,0,22),Text="Reset Layout",TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=7,}},
+			{39,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.2352941185236,0.2352941185236,0.2352941185236),BorderSizePixel=0,Font=3,Name="CompactPreset",Parent={36},Position=UDim2.new(0,0,0,52),Size=UDim2.new(0.333,-3,0,22),Text="Compact",TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=7,}},
+			{40,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.2352941185236,0.2352941185236,0.2352941185236),BorderSizePixel=0,Font=3,Name="MediumPreset",Parent={36},Position=UDim2.new(0.333,2,0,52),Size=UDim2.new(0.333,-3,0,22),Text="Medium",TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=7,}},
+			{41,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.2352941185236,0.2352941185236,0.2352941185236),BorderSizePixel=0,Font=3,Name="LargePreset",Parent={36},Position=UDim2.new(0.666,4,0,52),Size=UDim2.new(0.334,-4,0,22),Text="Large",TextColor3=Color3.new(1,1,1),TextSize=11,ZIndex=7,}},
+			{42,"Frame",{BackgroundTransparency=1,Name="StatusPanel",Parent={30},Position=UDim2.new(0,6,0,52),Size=UDim2.new(1,-12,1,-84),Visible=false,ZIndex=6,}},
+			{43,"TextLabel",{BackgroundTransparency=1,Font=3,Name="StatusSummary",Parent={42},Size=UDim2.new(1,0,1,0),Text="Diagnostics",TextColor3=Color3.new(1,1,1),TextSize=11,TextWrapped=true,TextXAlignment=0,TextYAlignment=0,ZIndex=7,}},
 		})
 		Main.MainGui = gui
 		Main.AppsFrame = gui.OpenButton.MainFrame.AppsFrame
@@ -16253,6 +16649,7 @@ Main = (function()
 		openButton.MainFrame.BackgroundColor3 = Settings.Theme.Main1
 		openButton.MainFrame.BottomFrame.BackgroundColor3 = Settings.Theme.Main2
 		openButton.MainFrame.BottomFrame.CoverFrame.Line.BackgroundColor3 = Settings.Theme.AccentSoft
+		openButton.MainFrame.DexHub.DexHubTitle.TextColor3 = Settings.Theme.AccentGlow
 		gui.ActionPalette.BackgroundColor3 = Settings.Theme.SurfaceGlass
 		gui.ActionPalette.PaletteSearch.BackgroundColor3 = Settings.Theme.TextBox
 		gui.ActionPalette.PaletteSearch.PlaceholderColor3 = Settings.Theme.PlaceholderText
@@ -16260,6 +16657,12 @@ Main = (function()
 		Lib.ApplyModernFrameStyle(openButton, 6, Settings.Theme.AccentSoft, 0.55)
 		Lib.ApplyModernFrameStyle(openButton.MainFrame, 7, Settings.Theme.AccentSoft, 0.62)
 		Lib.ApplyModernStroke(openButton.MainFrame.BottomFrame, Settings.Theme.AccentSoft, 0.72)
+		for _, tab in pairs(openButton.MainFrame.DexHub.DexHubTabs:GetChildren()) do
+			if tab:IsA("TextButton") then Lib.ApplyModernFrameStyle(tab, 5, Settings.Theme.Outline2, 0.72) end
+		end
+		for _, tool in pairs(openButton.MainFrame.DexHub.ToolsPanel:GetChildren()) do
+			if tool:IsA("TextButton") then Lib.ApplyModernFrameStyle(tool, 5, Settings.Theme.Outline2, 0.72) end
+		end
 		Lib.ApplyModernFrameStyle(gui.ActionPalette, 8, Settings.Theme.AccentSoft, 0.45)
 		Lib.ApplyModernFrameStyle(gui.ActionPalette.PaletteSearch, 5, Settings.Theme.Outline2, 0.62)
 		openButton.BackgroundTransparency = 0.2
@@ -16341,6 +16744,38 @@ Main = (function()
 		openButton.MainFrame.BottomFrame.ResetLayout.MouseButton1Click:Connect(function()
 			Main.ResetMobileLayout()
 		end)
+
+		openButton.MainFrame.DexHub.DexHubTabs.AppsTab.MouseButton1Click:Connect(function()
+			Main.SetDexHubTab("Apps")
+		end)
+
+		openButton.MainFrame.DexHub.DexHubTabs.ToolsTab.MouseButton1Click:Connect(function()
+			Main.SetDexHubTab("Tools")
+		end)
+
+		openButton.MainFrame.DexHub.DexHubTabs.StatusTab.MouseButton1Click:Connect(function()
+			Main.SetDexHubTab("Status")
+		end)
+
+		openButton.MainFrame.DexHub.ToolsPanel.SearchTool.MouseButton1Click:Connect(function()
+			Main.ToggleActionPalette()
+		end)
+
+		openButton.MainFrame.DexHub.ToolsPanel.ResetTool.MouseButton1Click:Connect(function()
+			Main.ResetMobileLayout()
+		end)
+
+		openButton.MainFrame.DexHub.ToolsPanel.CompactPreset.MouseButton1Click:Connect(function()
+			Main.ResizeMobileWindowByPreset("Compact")
+		end)
+
+		openButton.MainFrame.DexHub.ToolsPanel.MediumPreset.MouseButton1Click:Connect(function()
+			Main.ResizeMobileWindowByPreset("Medium")
+		end)
+
+		openButton.MainFrame.DexHub.ToolsPanel.LargePreset.MouseButton1Click:Connect(function()
+			Main.ResizeMobileWindowByPreset("Large")
+		end)
 		
 		gui.ActionPalette.PaletteSearch:GetPropertyChangedSignal("Text"):Connect(function()
 			Main.FilterActionPalette(gui.ActionPalette.PaletteSearch.Text)
@@ -16375,6 +16810,8 @@ Main = (function()
 		
 		Main.CreateApp({Name = "3D Viewer", IconMap = Main.LargeIcons, Icon = "Object", Window = ModelViewer.Window})
 
+		Main.CreateApp({Name = "Diagnostics", IconMap = Main.LargeIcons, Icon = "Output", Window = Main.CreateDiagnosticsWindow()})
+
 		--Main.CreateApp({Name = "Secret Service Panel", IconMap = Main.LargeIcons, Icon = "Output", Window = SecretServicePanel.Window})
 		
 		for _, loadedplugin in pairs(Main.Plugins) do
@@ -16399,12 +16836,15 @@ Main = (function()
 	end
 
 	Main.EnsureBundledPlugins = function()
-		if not env.writefile or not env.makefolder then return end
-		env.makefolder("dex")
-		env.makefolder("dex/plugins")
+		if not env.writefile or not env.makefolder then
+			Main.PluginStatus.RemoteSpy = Main.PluginStatus.RemoteSpy or "filesystem unsupported"
+			return
+		end
+		pcall(env.makefolder, "dex")
+		pcall(env.makefolder, "dex/plugins")
 		local plugin_src = Main.BundledRemoteSpyPluginSource
 		if plugin_src and plugin_src ~= "" then
-			env.writefile("dex/plugins/RemoteSpy.lua", plugin_src)
+			pcall(env.writefile, "dex/plugins/RemoteSpy.lua", plugin_src)
 		end
 	end
 
@@ -16521,17 +16961,20 @@ Main = (function()
 			--SecretServicePanel.Init()
 		end) then return end
 		
+		Main.LoadBundledPlugins(intro)
 		
-		if env.readfile and listfiles then
-			if #listfiles("dex/plugins") > 0 then
+		if env.readfile and env.listfiles then
+			local ok, pluginPaths = pcall(env.listfiles, "dex/plugins")
+			if ok and pluginPaths and #pluginPaths > 0 then
 				intro.SetProgress("Loading Plugin Files",0.8)
-				for _, pluginDir in pairs(listfiles("dex/plugins")) do
+				for _, pluginDir in pairs(pluginPaths) do
 					local pluginFriendlyName = tostring(pluginDir)
-					Main.RunInitStep(intro, "Plugin: "..pluginFriendlyName, 0.9, function()
+					local okPlugin, pluginErr = Main.RunInitStep(intro, "Plugin: "..pluginFriendlyName, 0.9, function()
 						local moduleData = Main.LoadPluginFile(pluginDir)
 						moduleData.PluginData = moduleData.PluginData or {}
 						pluginFriendlyName = moduleData.PluginData.FriendlyName or moduleData.Window.GuiElems.Title.Text or "Unnamed Plugin"
 						local pluginName = moduleData.PluginData.Name or moduleData.Window.GuiElems.Title.Text:gsub(" ", "") or "unnamedPlugin"
+						if Main.LoadedPluginNames[pluginName] then return end
 
 						intro.SetProgress("Initializing Plugin: ".. pluginFriendlyName,0.9)
 						moduleData.Init()
@@ -16540,7 +16983,12 @@ Main = (function()
 						moduleData.PluginData.FriendlyName = pluginFriendlyName
 
 						table.insert(Main.Plugins, moduleData)
+						Main.LoadedPluginNames[pluginName] = true
+						Main.PluginStatus[pluginName] = "ready"
 					end)
+					if not okPlugin then
+						Main.PluginStatus[pluginFriendlyName] = "failed: "..tostring(pluginErr)
+					end
 				end
 			end	
 		end
@@ -16569,6 +17017,10 @@ Main = (function()
 		Main.AppSequence = {}
 		Main.AppControls = {}
 		Main.Plugins = {}
+		Main.PluginStatus = {}
+		Main.LoadedPluginNames = {}
+		Main.DiagnosticsWindow = nil
+		Main.RefreshDiagnosticsWindow = nil
 		for _, gui in pairs(Main.GetSecureContainer():GetChildren()) do
 			if string.sub(gui.Name,1,5) == "_DPP_" then -- DPP stands for DexPlusPlus
 				gui:Destroy()
@@ -16659,7 +17111,9 @@ local function main()
 	local Settings = settings_ref or { Performance = {} }
 	Settings.Performance = Settings.Performance or {}
 	env_ref = env_ref or {}
+	local Main = main_ref
 	local hook_namecall = env_ref.hookmetamethod or hookmetamethod
+	local get_namecall_method = env_ref.getnamecallmethod or getnamecallmethod
 	local set_clipboard = env_ref.setclipboard or setclipboard
 	local get_nil_instances = env_ref.getnilinstances or getnilinstances
 	spy.PluginData = plugin_data
@@ -16865,12 +17319,18 @@ local function main()
 	local function start()
 		if active then return end
 		active = true
+		if status_label and Main and Main.DescribeCapabilityStatus then
+			status_label.Text = Main.DescribeCapabilityStatus("hookmetamethod")
+		end
  
-		if hook_namecall and not namecall_orig then
+		if hook_namecall and not get_namecall_method and status_label then
+			status_label.Text = "getnamecallmethod missing"
+		end
+		if hook_namecall and get_namecall_method and not namecall_orig then
 			local oldNamecall
 			local ok, orig = pcall(function()
 				oldNamecall = hook_namecall(game, "__namecall", function(self, ...)
-					local method = getnamecallmethod and getnamecallmethod() or ""
+					local method = get_namecall_method and get_namecall_method() or ""
 					if active
 						and typeof(self) == "Instance"
 						and remote_classes[self.ClassName]
@@ -16887,13 +17347,17 @@ local function main()
 			status_label.Text = "hook unsupported"
 		end
 		if active and not namecall_orig and status_label then
-			status_label.Text = hook_namecall and "incoming only" or "hook unsupported"
+			status_label.Text = (not hook_namecall and "hook unsupported") or (not get_namecall_method and "getnamecallmethod missing") or "incoming only"
 		end
  
 		local ok, descs = pcall(game.GetDescendants, game)
 		if ok then
-			for _, inst in ipairs(descs) do
-				hook_instance(inst)
+			if Main and Main.BatchIterate then
+				Main.BatchIterate(descs, Settings.Performance.RemoteSpyBatchSize or 80, function(inst)
+					hook_instance(inst)
+				end)
+			else
+				for _, inst in ipairs(descs) do hook_instance(inst) end
 			end
 		end
  
@@ -16970,6 +17434,11 @@ local function main()
 		status_label.Size       = UDim2.new(1, -274, 1, 0)
 		status_label.Position   = UDim2.new(0, 272, 0, 0)
 		status_label.Text       = "0 logs"
+		if not (env_ref.writefile and env_ref.listfiles) then
+			status_label.Text = "ready (filesystem unsupported)"
+		else
+			status_label.Text = "ready"
+		end
 		status_label.Parent     = toolbar
  
 		local search_bar = Instance.new("Frame")
@@ -17102,6 +17571,10 @@ return {
 }
  
 ]=]
+
+Main.BundledPlugins = {
+	RemoteSpy = Main.BundledRemoteSpyPluginSource,
+}
 
 -- Start
 Main.Init()
