@@ -6201,6 +6201,7 @@ local function main()
 				{19,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.27450981736183,0.27450981736183,0.27450981736183),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="West",Parent={14},Position=UDim2.new(0,0,0,resizeHandle),Size=UDim2.new(0,resizeHandle,1,-resizeHandle*2),Text="",TextColor3=Color3.new(0,0,0),TextSize=14,}},
 				{20,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.27450981736183,0.27450981736183,0.27450981736183),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="SouthEast",Parent={14},Position=UDim2.new(1,-resizeHandle,1,-resizeHandle),Size=UDim2.new(0,resizeHandle,0,resizeHandle),Text="",TextColor3=Color3.new(0,0,0),TextSize=14,}},
 				{21,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.27450981736183,0.27450981736183,0.27450981736183),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="NorthWest",Parent={14},Size=UDim2.new(0,resizeHandle,0,resizeHandle),Text="",TextColor3=Color3.new(0,0,0),TextSize=14,}},
+				{22,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.27450981736183,0.27450981736183,0.27450981736183),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="SouthWest",Parent={14},Position=UDim2.new(0,0,1,-resizeHandle),Size=UDim2.new(0,resizeHandle,0,resizeHandle),Text="",TextColor3=Color3.new(0,0,0),TextSize=14,}},
 			})
 
 			if isMobile then
