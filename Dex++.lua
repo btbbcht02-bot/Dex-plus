@@ -571,9 +571,9 @@ local function main()
 				elseif operatorsSet[token] then
 					return colors.operator
 				elseif luaSet[token] then
-					return colors.rbx
-				elseif rbxSet[token] then
 					return colors.lua
+				elseif rbxSet[token] then
+					return colors.rbx
 				elseif exploitSet[token] then
 					return colors.exploit
 				elseif token:sub(1, 1) == "\"" or token:sub(1, 1) == "\'" then
@@ -687,6 +687,41 @@ local function main()
 
 		local CtrlScroll = false
 		local AutoScroll = false
+
+		local Console = ConsoleFrame
+		if Main.IsMobile() then
+			local tap = 28
+			Console.TextSizeBox.Size = UDim2.new(0, 50, 0, tap)
+			Console.TextSizeBox.Position = UDim2.new(0, 4, 0, 4)
+			
+			Console.CtrlScroll.Size = UDim2.new(0, 80, 0, tap)
+			Console.CtrlScroll.Position = UDim2.new(0, 58, 0, 4)
+			
+			Console.AutoScroll.Size = UDim2.new(0, 80, 0, tap)
+			Console.AutoScroll.Position = UDim2.new(0, 142, 0, 4)
+			
+			Console.Clear.Size = UDim2.new(0, 60, 0, tap)
+			Console.Clear.Position = UDim2.new(1, -64, 0, 4)
+			
+			local topOffset = tap + 8
+			local bottomHeight = 32
+			local bottomOffset = bottomHeight + 10
+			
+			Console.CommandLine.Size = UDim2.new(1, -8, 0, bottomHeight)
+			Console.CommandLine.ScrollingFrame.TextBox.Size = UDim2.new(0, 246, 1, 0)
+			Console.CommandLine.ScrollingFrame.Highlight.Size = UDim2.new(0, 246, 1, 0)
+			
+			Console.Output.Position = UDim2.new(0, 4, 0, topOffset)
+			Console.Output.Size = UDim2.new(1, -8, 1, -(topOffset + bottomOffset))
+			
+			for _, child in pairs(Console:GetChildren()) do
+				if child:IsA("Frame") and child:FindFirstChild("Up") and child:FindFirstChild("Down") then
+					child.Size = UDim2.new(0, 16, 1, -(topOffset + bottomOffset))
+					child.Position = UDim2.new(1, -20, 0, topOffset)
+					break
+				end
+			end
+		end
 
 		local LogService = game:GetService("LogService")
 		local Players = game:GetService("Players")
@@ -831,9 +866,8 @@ local function main()
 			end
 
 			newOutputText.TextSize = OutputTextSize.Value
-			OutputTextSize:GetPropertyChangedSignal("Value"):Connect(function()
-				newOutputText.TextSize = OutputTextSize.Value
-			end)
+			-- ใช้ displayedOutput เพื่ออัพเดท TextSize ทั้งหมดจาก connection เดียว (แก้ memory leak)
+			-- ดู OutputTextSize connection ที่บรรทัดด้านล่าง
 
 			newOutputText.Focused:Connect(function()
 				focussedOutput = newOutputText
@@ -872,7 +906,13 @@ local function main()
 			if enterPressed and Console.CommandLine.ScrollingFrame.TextBox.Text ~= "" then
 				if not Main.GuardCapability("loadstring", Console.CommandLine.ScrollingFrame.TextBox) then return end
 				print("> "..Console.CommandLine.ScrollingFrame.TextBox.Text)
-				loadstring(Console.CommandLine.ScrollingFrame.TextBox.Text)()
+				local fn, compileErr = loadstring(Console.CommandLine.ScrollingFrame.TextBox.Text)
+				if fn then
+					local ok, runErr = pcall(fn)
+					if not ok then warn("Console Error: " .. tostring(runErr)) end
+				else
+					warn("Console Syntax Error: " .. tostring(compileErr))
+				end
 			end
 		end)
 	end
@@ -1897,7 +1937,7 @@ local function main()
 	Explorer.InitRightClick = function()
 		local context = Lib.ContextMenu.new()
 
-		context:Register("CUT",{Name = "Cut", IconMap = Explorer.MiscIcons, Icon = "Cut", DisabledIcon = "Cut_Disabled", Shortcut = "Ctrl+Z", OnClick = function()
+		context:Register("CUT",{Name = "Cut", IconMap = Explorer.MiscIcons, Icon = "Cut", DisabledIcon = "Cut_Disabled", Shortcut = "Ctrl+X", OnClick = function()
 			local destroy,clone = game.Destroy,game.Clone
 			local sList,newClipboard = selection.List,{}
 			local count = 1
@@ -2316,7 +2356,7 @@ local function main()
 			RemoteFunction = "InvokeServer",
 			UnreliableRemoteEvent = "FireServer",
 
-			BindableRemote = "Fire",
+			BindableEvent = "Fire",
 			BindableFunction = "Invoke",
 		}
 		context:Register("BLOCK_REMOTE",{Name = "Block From Firing", IconMap = Explorer.MiscIcons, Icon = "Delete", DisabledIcon = "Empty", OnClick = function()
@@ -6161,8 +6201,13 @@ local function main()
 				{19,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.27450981736183,0.27450981736183,0.27450981736183),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="West",Parent={14},Position=UDim2.new(0,0,0,resizeHandle),Size=UDim2.new(0,resizeHandle,1,-resizeHandle*2),Text="",TextColor3=Color3.new(0,0,0),TextSize=14,}},
 				{20,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.27450981736183,0.27450981736183,0.27450981736183),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="SouthEast",Parent={14},Position=UDim2.new(1,-resizeHandle,1,-resizeHandle),Size=UDim2.new(0,resizeHandle,0,resizeHandle),Text="",TextColor3=Color3.new(0,0,0),TextSize=14,}},
 				{21,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.27450981736183,0.27450981736183,0.27450981736183),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="NorthWest",Parent={14},Size=UDim2.new(0,resizeHandle,0,resizeHandle),Text="",TextColor3=Color3.new(0,0,0),TextSize=14,}},
-				{22,"TextButton",{AutoButtonColor=false,BackgroundColor3=Color3.new(0.27450981736183,0.27450981736183,0.27450981736183),BackgroundTransparency=1,BorderSizePixel=0,Font=3,Name="SouthWest",Parent={14},Position=UDim2.new(0,0,1,-resizeHandle),Size=UDim2.new(0,resizeHandle,0,resizeHandle),Text="",TextColor3=Color3.new(0,0,0),TextSize=14,}},
 			})
+
+			if isMobile then
+				local scale = Instance.new("UIScale")
+				scale.Scale = mobileMetrics.Scale
+				scale.Parent = gui
+			end
 
 			local guiMain = gui.Main
 			local guiTopBar = guiMain.TopBar
@@ -6311,7 +6356,7 @@ local function main()
 			end)
 
 			guiMain.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch and not self.Aligned and not self.Closed then
+				if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not self.Aligned and not self.Closed then
 					moveToTop(self)
 				end
 			end)
@@ -6507,7 +6552,7 @@ local function main()
 			end)
 
 			resizer.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch and side.Resizing ~= resizer then
+				if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and side.Resizing ~= resizer then
 					resizer.BackgroundColor3 = theme.Button
 				end
 			end)
@@ -10855,6 +10900,12 @@ local function main()
 		end
 
 		funcs.Trigger = function(self, item, button, X, Y)
+			if not X or not Y then
+				local mouseLoc = service.UserInputService:GetMouseLocation()
+				X, Y = mouseLoc.X, mouseLoc.Y
+			end
+			local startPos = Vector2.new(X, Y)
+
 			if table.find(self.AllowedButtons, button) then
 				if self.LastButton ~= button or self.LastItem ~= item or self.Combo == self.MaxCombo or tick() - self.ClickId > self.ComboTime then
 					self.Combo = 0
@@ -10871,17 +10922,25 @@ local function main()
 					else
 						self.InputDown = tick()
 
-						local Connection = item.MouseButton1Up:Once(function()
+						local Connection
+						Connection = item.MouseButton1Up:Connect(function()
 							self.InputDown = false
+							if Connection then Connection:Disconnect() end
 						end)
 
 						while self.InputDown and not Explorer.Dragging do
-							if (tick() - self.InputDown) >= 0.4 then
+							local currentPos = service.UserInputService:GetMouseLocation()
+							if (currentPos - startPos).Magnitude > 15 then
 								self.InputDown = false
-								self["OnRelease"]:Fire(item, self.Combo, 2, Vector2.new(X, Y))
+								break
+							end
+							if (tick() - self.InputDown) >= 0.5 then
+								self.InputDown = false
+								self["OnRelease"]:Fire(item, self.Combo, 2, currentPos)
 								break
 							end;task.wait()
 						end
+						if Connection then Connection:Disconnect() end
 					end
 				end)
 
@@ -14434,7 +14493,7 @@ DefaultSettings = (function()
 			PartSelectionBox = true,
 			GuiSelectionBox = true,
 			CopyPathUseGetChildren = true,
-			TouchDragEnabled = false,
+			TouchDragEnabled = true,
 			TouchDragHoldTime = 0.35,
 			TouchDragMoveThreshold = 18,
 			TouchScrollCancelThreshold = 10
@@ -14537,7 +14596,7 @@ DefaultSettings = (function()
 			LauncherSize = 36,
 			LauncherPosition = { X = 0.88, Y = 0.72 },
 			SinglePanel = true,
-			BottomNavigation = false,
+			BottomNavigation = true,
 			ActionPalette = true
 		},
 		Performance = {
@@ -15701,7 +15760,7 @@ Main = (function()
 			mobileSettings.ResizeHandleSize = 22
 			mobileSettings.WindowOverrides = {}
 			mobileSettings.LauncherSize = 36
-			mobileSettings.BottomNavigation = false
+			mobileSettings.BottomNavigation = true
 			mobileSettings.FloatingLauncher = true
 			mobileSettings.LayoutVersion = 5
 		end
@@ -16586,9 +16645,14 @@ Main = (function()
 	Main.ApplyMobileMainGui = function()
 		if not Main.MainGui or not Main.IsMobile() then return end
 		local metrics = Main.GetMobileMetrics()
+		local gui = Main.MainGui
+		if not gui:FindFirstChildOfClass("UIScale") then
+			local scale = Instance.new("UIScale")
+			scale.Scale = metrics.Scale
+			scale.Parent = gui
+		end
 		local viewport = Main.GetViewportSize()
 		local layoutBudget = Main.GetMobileLayoutBudget(viewport, metrics)
-		local gui = Main.MainGui
 		local openButton = gui.OpenButton
 		local mainFrame = openButton and openButton:FindFirstChild("MainFrame")
 		local bottomFrame = mainFrame and mainFrame:FindFirstChild("BottomFrame")
@@ -16668,6 +16732,115 @@ Main = (function()
 		Main.SetDexHubTab("Apps")
 		Main.RefreshDiagnosticsSummary()
 		Main.EnsureMobileResizeHandles()
+
+		if metrics.BottomNavHeight > 0 then
+			local navBar = gui:FindFirstChild("BottomNavBar")
+			if not navBar then
+				navBar = Instance.new("Frame")
+				navBar.Name = "BottomNavBar"
+				navBar.Size = UDim2.new(1, 0, 0, metrics.BottomNavHeight)
+				navBar.Position = UDim2.new(0, 0, 1, -metrics.BottomNavHeight)
+				navBar.BackgroundColor3 = Settings.Theme.Main2 or Color3.fromRGB(33, 33, 33)
+				navBar.BorderSizePixel = 0
+				navBar.ZIndex = 100000
+				navBar.Parent = gui
+
+				local line = Instance.new("Frame")
+				line.Name = "TopLine"
+				line.Size = UDim2.new(1, 0, 0, 1)
+				line.Position = UDim2.new(0, 0, 0, 0)
+				line.BackgroundColor3 = Settings.Theme.Outline1 or Color3.fromRGB(45, 45, 45)
+				line.BorderSizePixel = 0
+				line.Parent = navBar
+
+				local tabs = {"Explorer", "Properties", "Console", "Settings"}
+				local buttons = {}
+
+				local function updateTabHighlights()
+					for name, btn in pairs(buttons) do
+						local isCurrent = false
+						if name == "Explorer" and Explorer.Window and not Explorer.Window.Closed then
+							isCurrent = true
+						elseif name == "Properties" and Properties.Window and not Properties.Window.Closed then
+							isCurrent = true
+						elseif name == "Console" and Console.Window and not Console.Window.Closed then
+							isCurrent = true
+						elseif name == "Settings" and SettingsWindow.Window and not SettingsWindow.Window.Closed then
+							isCurrent = true
+						end
+
+						if isCurrent then
+							btn.BackgroundColor3 = Settings.Theme.Accent or Color3.fromRGB(11, 90, 175)
+							btn.TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+							btn.TextLabel.TextTransparency = 0
+						else
+							btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+							btn.BackgroundTransparency = 1
+							btn.TextLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+							btn.TextLabel.TextTransparency = 0.3
+						end
+					end
+				end
+
+				local function showTab(tabName)
+					if tabName == "Explorer" and Explorer.Window then
+						Explorer.Window:Show()
+						if Properties.Window then Properties.Window:Hide() end
+						if Console.Window then Console.Window:Hide() end
+						if SettingsWindow.Window then SettingsWindow.Window:Hide() end
+					elseif tabName == "Properties" and Properties.Window then
+						Properties.Window:Show()
+						if Explorer.Window then Explorer.Window:Hide() end
+						if Console.Window then Console.Window:Hide() end
+						if SettingsWindow.Window then SettingsWindow.Window:Hide() end
+					elseif tabName == "Console" and Console.Window then
+						Console.Window:Show()
+						if Explorer.Window then Explorer.Window:Hide() end
+						if Properties.Window then Properties.Window:Hide() end
+						if SettingsWindow.Window then SettingsWindow.Window:Hide() end
+					elseif tabName == "Settings" and SettingsWindow.Window then
+						SettingsWindow.Window:Show()
+						if Explorer.Window then Explorer.Window:Hide() end
+						if Properties.Window then Properties.Window:Hide() end
+						if Console.Window then Console.Window:Hide() end
+					end
+					updateTabHighlights()
+				end
+
+				for i, tabName in ipairs(tabs) do
+					local btn = Instance.new("TextButton")
+					btn.Name = tabName .. "Tab"
+					btn.Size = UDim2.new(0.25, 0, 1, -1)
+					btn.Position = UDim2.new((i - 1) * 0.25, 0, 0, 1)
+					btn.BackgroundTransparency = 1
+					btn.Text = ""
+					btn.Parent = navBar
+
+					local textLabel = Instance.new("TextLabel")
+					textLabel.Size = UDim2.new(1, 0, 1, 0)
+					textLabel.BackgroundTransparency = 1
+					textLabel.Text = tabName
+					textLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+					textLabel.TextSize = 12
+					textLabel.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.SemiBold)
+					textLabel.Parent = btn
+
+					btn.MouseButton1Click:Connect(function()
+						showTab(tabName)
+					end)
+
+					buttons[tabName] = btn
+				end
+
+				task.spawn(function()
+					while navBar.Parent do
+						updateTabHighlights()
+						task.wait(0.5)
+					end
+				end)
+			end
+		end
+
 		Main.ReflowMobileLayout()
 	end
 
